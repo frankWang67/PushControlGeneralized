@@ -36,6 +36,9 @@ DX = xLenght/(N*M)
 DY = yLenght/(N*M)
 # -------------------------------------------------------------------
 # 1D casadi integration of g
+# integrand y'=f(x)
+# integrate x^2 dx for x=-xL/2..xL/2
+# h equals to DX and DY for x and y separately
 # cost function
 g = cs.Function('g_ext', [x], [DX, (x**2)*DX])
 Q = 0  # initialize cost
@@ -51,6 +54,9 @@ for n in range(N):
 quad_cs = cs.Function('quad_cs', [xLenght], [Q])
 # -------------------------------------------------------------------
 # 2D casadi integration of g
+# integrand g'=f(x, y)
+# integrate sqrt(x^2+y^2) dxdy for x=-xL/2..xL/2, y=-yL/2..yL/2
+# h equals to DX and DY for x and y separately
 g = cs.Function('h_ext', [x, y], [DX, DY, (cs.sqrt((x**2)+(y**2)))*DX*DY])
 Q = 0  # initialize cost
 yy = -yLenght/2  # initialize initial cond
@@ -68,3 +74,4 @@ for ny in range(N):
         yy += (k1_y + 2*k2_y + 2*k3_y + k4_y)/6
 rect_cs = cs.Function('rect_cs', [xLenght, yLenght], [Q])
 square_cs = cs.Function('square_cs', [sLenght], [rect_cs(sLenght, sLenght)])
+import pdb; pdb.set_trace()

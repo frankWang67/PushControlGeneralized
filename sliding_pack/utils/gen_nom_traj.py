@@ -47,7 +47,7 @@ def compute_nomState_from_nomTraj(x_data, y_data, dt):
     # assign two first state trajectories
     x0_nom = x_data
     x1_nom = y_data
-    # compute diff for plannar traj
+    # compute diff for planar traj
     Dx0_nom = np.diff(x0_nom)
     Dx1_nom = np.diff(x1_nom)
     # compute traj angle 
@@ -58,6 +58,7 @@ def compute_nomState_from_nomTraj(x_data, y_data, dt):
         c, s = np.cos(theta), np.sin(theta)
         R = np.array(((c, s), (-s, c)))
         Dx_new = R.dot(np.array((Dx0_nom[i],Dx1_nom[i])))
+        print(Dx_new)
         theta += np.arctan2(Dx_new[1], Dx_new[0])
         x2_nom[i] = theta
     x2_nom = np.append(x2_nom, x2_nom[-1])

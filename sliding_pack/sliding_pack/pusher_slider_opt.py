@@ -168,7 +168,7 @@ class buildOptObj():
             for i in range(self.TH-1):
                 # ---- Add States to optimization variables ---
                 self.opt.x += self.X[:, i].elements()
-                if i == 0: # expanding state constraint for 1st one
+                if i == 0: # expanding state constraint for 1st one (what trick is this?)
                     self.args.lbx += [1.5*x for x in self.dyn.lbx]
                     self.args.ubx += [1.5*x for x in self.dyn.ubx]
                 else:
@@ -239,6 +239,7 @@ class buildOptObj():
             self.opt.f = cs.sum2(self.cost_F(self.X_bar[:, :-1], self.U))
             self.opt.f += self.K_goal*self.cost_f(self.X_bar[:, -1], self.U[:, -1])
         for i in range(self.dyn.Nz):
+            # (what trick is this?)
             self.opt.f += cs.sum1(self.Kz*(self.Z[i].T**2))
 
         # ---- Set optimization parameters ----

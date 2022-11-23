@@ -33,6 +33,10 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         #  -------------------------------------------------------------------
         # vector of physical parameters
         # self.beta = [self.xl, self.yl, self.r_pusher]
+        
+        # obstacles
+        self.Radius = 0.05
+        
         self.Nbeta = 3
         self.beta = cs.SX.sym('beta', self.Nbeta)
         # beta[0] - xl
@@ -58,6 +62,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         #  -------------------------------------------------------------------
 
         # auxiliar symbolic variables
+        # used to compute the symbolic representation for variables
         # -------------------------------------------------------------------
         # x - state vector
         __x_slider = cs.SX.sym('__x_slider')  # in global frame [m]
@@ -87,43 +92,45 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         __A[0,0] = __A[1,1] = 1.; __A[2,2] = 1./(__c**2);
         __ctheta = cs.cos(__theta)
         __stheta = cs.sin(__theta)
-        __R = cs.SX(3, 3)
+        __R = cs.SX(3, 3)  # anti-clockwise rotation matrix (from {Slider} to {World})
         __R[0,0] = __ctheta; __R[0,1] = -__stheta; __R[1,0] = __stheta; __R[1,1] = __ctheta; __R[2,2] = 1.0;
         #  -------------------------------------------------------------------
-        self.R = cs.Function('R', [__x], [__R], ['x'], ['R'])
+        self.R = cs.Function('R', [__x], [__R], ['x'], ['R'])  # (rotation matrix from {Slider} to {World})
         #  -------------------------------------------------------------------
+        # slider frame ({x} forward, {y} left)
         # slider position
-        __xc = -__xl/2; __yc = -(__xl/2)*cs.tan(__psi)
-        __rc = cs.SX(2,1); __rc[0] = __xc-__r_pusher; __rc[1] = __yc
-        __p_pusher = cs.mtimes(__R[0:2,0:2], __rc)[0:2] + __x[0:2]
+        __xc = -__xl/2; __yc = -(__xl/2)*cs.tan(__psi)  # ({Contact Point} in {Slider})
+        __rc = cs.SX(2,1); __rc[0] = __xc-__r_pusher; __rc[1] = __yc  # ({Pusher Center} in {Slider})
+        __p_pusher = cs.mtimes(__R[0:2,0:2], __rc)[0:2] + __x[0:2]  # ({Pusher Center} in {World})
         #  -------------------------------------------------------------------
-        __p = cs.SX.sym('p', 2) # slider position
-        __rc_prov = cs.mtimes(__R[0:2,0:2].T, __p - __x[0:2])
-        __psi_prov = -cs.atan2(__rc_prov[1], __xl/2)
-        self.psi_ = cs.Function('psi_', [__x,__p,__beta], [__psi_prov])
+        __p = cs.SX.sym('p', 2) # pusher position
+        __rc_prov = cs.mtimes(__R[0:2,0:2].T, __p - __x[0:2])  # (Real {Pusher Center} in {Slider})
+        __psi_prov = -cs.atan2(__rc_prov[1], __xl/2)  # (Real {φ_c})
+        self.psi_ = cs.Function('psi_', [__x,__p,__beta], [__psi_prov])  # compute (φ_c) from state variables, pusher coordinates and slider geometry
         self.psi = cs.Function('psi', [self.x,__p,self.beta], [self.psi_(self.x, __p, self.beta)])
         #  -------------------------------------------------------------------
-        self.p_ = cs.Function('p_', [__x,__beta], [__p_pusher], ['x', 'b'], ['p'])
+        self.p_ = cs.Function('p_', [__x,__beta], [__p_pusher], ['x', 'b'], ['p'])  # compute (pusher_center_coordinate) from state variables and slider geometry
         self.p = cs.Function('p', [self.x, self.beta], [self.p_(self.x, self.beta)], ['x', 'b'], ['p'])
         #  -------------------------------------------------------------------
-        self.s = cs.Function('s', [self.x], [self.x[0:3]], ['x'], ['s'])
+        self.s = cs.Function('s', [self.x], [self.x[0:3]], ['x'], ['s'])  # compute (x, y, θ) from state variables
         #  -------------------------------------------------------------------
         # dynamics
         __Jc = cs.SX(2,3)
-        __Jc[0,0] = 1; __Jc[1,1] = 1; __Jc[0,2] = -__yc; __Jc[1,2] = __xc;
+        __Jc[0,0] = 1; __Jc[1,1] = 1; __Jc[0,2] = -__yc; __Jc[1,2] = __xc;  # contact jacobian
         __f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(__R,__A),cs.mtimes(__Jc.T,__u[0:2])),__u[2]))
         #  -------------------------------------------------------------------
-        self.f_ = cs.Function('f_', [__x,__u,__beta], [__f], ['x', 'u', 'b'], ['f'])
+        self.f_ = cs.Function('f_', [__x,__u,__beta], [__f], ['x', 'u', 'b'], ['f'])  # compute (f(x, u)) from state variables, input variables and slider geometry
         #  -------------------------------------------------------------------
 
         # control constraints
         #  -------------------------------------------------------------------
         if self.mode == 'sliding_cc':
+            # complementary constraint
             # u - control vector
             # u[0] - normal force in the local frame
             # u[1] - tangential force in the local frame
-            # u[2] - rel sliding vel between pusher and slider counterclockwise
-            # u[3] - rel sliding vel between pusher and slider clockwise
+            # u[2] - rel sliding vel between pusher and slider counterclockwise(φ_c(-))
+            # u[3] - rel sliding vel between pusher and slider clockwise(φ_c(+))
             self.Nu = 4  # number of action variables
             self.u = cs.SX.sym('u', self.Nu)
             self.Nz = 0
@@ -135,11 +142,11 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             empty_var = cs.SX.sym('empty_var')
             self.g_u = cs.Function('g_u', [self.u, empty_var], [cs.vertcat(
                 # friction cone edges
-                self.miu*self.u[0]+self.u[1],
-                self.miu*self.u[0]-self.u[1],
+                self.miu*self.u[0]+self.u[1],  # lambda(+)>=0
+                self.miu*self.u[0]-self.u[1],  # lambda(-)>=0
                 # complementarity constraint
-                (self.miu * self.u[0] - self.u[1])*self.u[3],
-                (self.miu * self.u[0] + self.u[1])*self.u[2]
+                (self.miu * self.u[0] - self.u[1])*self.u[3],  # lambda(-)*φ_c(+)=0
+                (self.miu * self.u[0] + self.u[1])*self.u[2]  # lambda(+)*φ_c(-)=0
             )], ['u', 'other'], ['g'])
             self.g_lb = [0., 0., 0., 0.]
             self.g_ub = [cs.inf, cs.inf, 0., 0.]
@@ -148,7 +155,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             __Ks_max = self.Kz_max
             __Ks_min = self.Kz_min
             __i_th = cs.SX.sym('__i_th')
-            self.kz_f = cs.Function('ks', [__i_th], [__Ks_max * cs.exp(__i_th * cs.log(__Ks_min / __Ks_max))])
+            self.kz_f = cs.Function('ks', [__i_th], [__Ks_max * cs.exp(__i_th * cs.log(__Ks_min / __Ks_max))])  # decrease from Ks_max to Ks_min
             # state and acton limits
             #  -------------------------------------------------------------------
             self.lbx = [-cs.inf, -cs.inf, -cs.inf, -self.psi_lim]
@@ -159,6 +166,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             # dynamics equation
             self.f = cs.Function('f', [self.x, self.u, self.beta], [self.f_(self.x, cs.vertcat(self.u[0:2], self.u[2]-self.u[3]), self.beta)],  ['x', 'u', 'b'], ['f'])
         elif self.mode == 'sliding_cc_slack':
+            # complementary constraint + slack variables
             # u - control vector
             # u[0] - normal force in the local frame
             # u[1] - tangential force in the local frame
@@ -199,6 +207,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             # dynamics equation
             self.f = cs.Function('f', [self.x, self.u, self.beta], [self.f_(self.x, cs.vertcat(self.u[0:2], self.u[2]-self.u[3]), self.beta)],  ['x', 'u', 'b'], ['f'])
         elif self.mode == 'sliding_mi':
+            # mixed integer
             # u - control vector
             # u[0] - normal force in the local frame
             # u[1] - tangential force in the local frame
@@ -237,6 +246,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             # dynamics equation
             self.f = cs.Function('f', [self.x, self.u, self.beta], [self.f_(self.x, self.u, self.beta)],  ['x', 'u', 'b'], ['f'])
         elif self.mode == 'sticking':
+            # sticking constraint
             # u - control vector
             # u[0] - normal force in the local frame
             # u[1] - tangential force in the local frame

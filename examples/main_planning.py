@@ -23,6 +23,7 @@ import sliding_pack
 # Get config files
 #  -------------------------------------------------------------------
 planning_config = sliding_pack.load_config('planning_config.yaml')
+planning_config['TO']['numObs'] = 2
 #  -------------------------------------------------------------------
 
 # Set Problem constants
@@ -49,6 +50,7 @@ dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
 # Generate Nominal Trajectory
 #  -------------------------------------------------------------------
 X_goal = planning_config['TO']['X_goal']
+X_goal = [0.4, 0.1, 0.3, 0.]
 # print(X_goal)
 x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, 0)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.3, 0.4, N, 0)
@@ -56,6 +58,7 @@ x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, 0
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.2, N, 0)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
+# the slider rotate to tangent direction of the nominal trajectory in one step
 X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  ------------------------------------------------------------------
 
@@ -76,6 +79,7 @@ elif optObj.numObs==3:
     obsRadius = [0.05, 0.05, 0.05]
 #  ------------------------------------------------------------------
 x_init = [0., 0., -20.*(np.pi/180.), 0.]
+# x_init = [0.38, 0.22, -70.*(np.pi/180.), 0.]
 beta = [
     planning_config['dynamics']['xLenght'],
     planning_config['dynamics']['yLenght'],
@@ -87,6 +91,7 @@ resultFlag, X_nom_val_opt, U_nom_val_opt, other_opt, _, t_opt = optObj.solveProb
         X_warmStart=X_nom_val,
         obsCentre=obsCentre, obsRadius=obsRadius,
         X_goal_val=X_goal)
+import pdb; pdb.set_trace()
 f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u, beta)*dt])
 f_rollout = f_d.mapaccum(N-1)
 print('comp time: ', t_opt)

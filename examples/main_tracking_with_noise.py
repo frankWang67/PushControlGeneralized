@@ -22,7 +22,7 @@ import sliding_pack
 
 # Get config files
 #  -------------------------------------------------------------------
-tracking_config = sliding_pack.load_config('/home/joao/Documents/Projects/pusher_slider/examples/tracking_config.yaml')
+tracking_config = sliding_pack.load_config('D:\\learning\\PlanarPushing\\pusher_slider\\examples\\tracking_config.yaml')
 print(tracking_config['TO']['contactMode'])
 # sys.exit()
 planning_config = sliding_pack.load_config('nom_config.yaml')
