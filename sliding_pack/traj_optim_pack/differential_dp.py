@@ -25,24 +25,22 @@ class buildDDPOptObj():
         # init parameters
         self.dyn = dyn_class
         self.TH = timeHorizon
-        self.beta = None
+        self.miu = dyn_class.miu
+        self.beta = dyn_class.beta
         
         self.W_x = cs.diag(cs.SX(configDict['W_x']))
         self.W_u = cs.diag(cs.SX(configDict['W_u']))
         
         # input constraints
         self.A_u = np.array([[ 1, 0, 0],
-                             [-1, 0, 0],
                              [ 0, 1, 0],
-                             [ 0,-1, 0],
                              [ 0, 0, 1],
-                             [ 0, 0,-1]])
-        self.b_u = np.array([[0],
-                             [-self.dyn.f_lim],
-                             [-self.dyn.f_lim],
-                             [-self.dyn.f_lim],
-                             [-self.dyn.psi_dot_lim],
-                             [-self.dyn.psi_dot_lim]])
+                             [self.miu,-1, 0],
+                             [self.miu, 1, 0]])
+
+        self.lb_u = np.array([[0, -self.dyn.f_lim, -self.dyn.psi_dot_lim, 0, 0]])
+
+        self.ub_u = np.array([[self.dyn.f_lim, self.dyn.f_lim, self.dyn.psi_dot_lim, np.inf, np.inf]])
         
         # dynamic functions
         self.f_xu = cs.Function(
@@ -89,20 +87,151 @@ class buildDDPOptObj():
             [self.dyn.x, self.dyn.u],
             [cs.dot(self.f_xu(self.dyn.x, self.dyn.u), cs.mtimes(self.W_x, self.f_xu(self.dyn.x, self.dyn.u)))]
         )
-        __lx = cs.jacobian(__cost_l(self.dyn.x, self.dyn.u), self.dyn.x)
-        __lu = cs.jacobian(__cost_l(self.dyn.x, self.dyn.u), self.dyn.u)
+        __cost_VN = cs.Function(
+            'cost_V0',
+            [self.dyn.x],
+            [cs.dot(self.dyn.x, cs.mtimes(self.W_x, self.dyn.x))]
+        )
+
+        # first and second derivatives of V_{k+1}, l and f
+        __lx = cs.gradient(__cost_l(self.dyn.x, self.dyn.u), self.dyn.x)
+        __lu = cs.gradient(__cost_l(self.dyn.x, self.dyn.u), self.dyn.u)
+        __lxx = cs.hessian(__cost_l(self.dyn.x, self.dyn.u), self.dyn.x)
+        __luu = cs.hessian(__cost_l(self.dyn.x, self.dyn.u), self.dyn.u)
+        __lux = cs.jacobian(cs.gradient(__cost_l(self.dyn.x, self.dyn.u), self.dyn.u), self.dyn.x)
         __fx = cs.jacobian(self.f_xu(self.dyn.x, self.dyn.u, self.beta), self.dyn.x)
         __fu = cs.jacobian(self.f_xu(self.dyn.x, self.dyn.u, self.beta), self.dyn.u)
-        __qx = 
+        __fxx = [cs.hessian(self.f_xu(self.dyn.x, self.dyn.u, self.beta)[i], self.dyn.x) for i in range(4)]
+        __fuu = [cs.hessian(self.f_xu(self.dyn.x, self.dyn.u, self.beta)[i], self.dyn.u) for i in range(4)]
+        __fux = [cs.jacobian(cs.gradient(self.f_xu(self.dyn.x, self.dyn.u, self.dyn.beta)[i], self.dyn.u), self.dyn.x) for i in range(4)]
+
+        __Vx = cs.SX(4, 1)
+        __Vxx = cs.SX(4, 4)
+        __VNx = cs.gradient(__cost_VN(self.dyn.x), self.dyn.x)
+        __VNxx = cs.hessian(__cost_VN(self.dyn.x), self.dyn.x)
+
+        self.VN = cs.Function(
+            'VN',
+            [self.dyn.x],
+            [__cost_VN]
+        )
+
+        self.VNx = cs.Function(
+            'VNx',
+            [self.dyn.x],
+            [__VNx]
+        )
+
+        self.VNxx = cs.Function(
+            'VNxx',
+            [self.dyn.x],
+            [__VNxx]
+        )
         
-        
-        
-        
-        
+        __qx = __lx + cs.mtimes(__fx.T, __Vx)
+        __qu = __lu + cs.mtimes(__fu.T, __Vx)
+        __Qxx = __lxx + cs.mtimes(__fx.T, cs.mtimes(__Vxx, __fx)) + \
+                sum((__Vx[i] * __fxx[i]) for i in range(4))
+        __Quu = __luu + cs.mtimes(__fu.T, cs.mtimes(__Vxx, __fu)) + \
+                sum((__Vx[i] * __fuu[i]) for i in range(4))
+        __Qux = __lux + cs.mtimes(__fu.T, cs.mtimes(__Vxx, __fx)) + \
+                sum((__Vx[i] * __fux[i]) for i in range(4))
+
+        __Q_mix = cs.SX(8, 8)
+        __Q_mix[0, 0] = 0
+        __Q_mix[1:5, 0] = __qx; __Q_mix[5:, 0] = __qu
+        __Q_mix[0, 1:5] = __qx.T; __Q_mix[0, 5:] = __qu.T
+        __Q_mix[1:5, 1:5] = __Qxx
+        __Q_mix[1:5, 5:] = __Qux.T; __Q_mix[5:, 1:5] = __Qux
+        __Q_mix[5:, 5:] = __Quu
+
+        self.Q_uu = cs.Function(
+            'Q_uu',
+            [self.dyn.x, self.dyn.u, self.dyn.beta, __Vx, __Vxx],
+            [__Quu]
+        )
+
+        self.qu = cs.Function(
+            'qu',
+            [self.dyn.x, self.dyn.u, self.dyn.beta, __Vx, __Vxx],
+            [__qu]
+        )
+
+        self.Q_mix = cs.Function(
+            'Q_mix',
+            [self.dyn.x, self.dyn.u, self.dyn.beta, __Vx, __Vxx],
+            [__Q_mix]
+        )
+
+        self.Q_dxdu = cs.Function(
+            'Q_dxdu',
+            [__dx, __du, self.dyn.x, self.dyn.u, self.dyn.beta, __Vx, __Vxx],
+            [0.5 * cs.dot(__dxu, cs.mtimes(__Q_mix, __dxu))]
+        )
         
     def project_feasible(self):
         pass
-        
+
+    def coldboot_integration(self, x0, U0):
+        """
+            ------ input
+            x0: (4, 1) is the array of initial states
+            U0: (3, N) is the array of initial inputs
+            ------ output
+            X_hat: (4, N+1) is the array of updated states
+        """
+        X_hat = np.zeros((4, self.TH + 1))
+        X_hat[:, 0] = x0  # (4, 1)
+        for k in range(0, self.TH):
+            X_hat[:, k+1] = self.f_xu(X_hat[:, k], U0[:, k], self.beta)
+
+        return X_hat
+
+    def backward_propagation(self, X, U):
+        """
+            ------ input
+            X: (4, N+1) is the array of forward integrated states
+            U: (4, N) is the array of inputs
+            ------ output
+            k_vec: (N, 3) is the set of feedforward vectors
+            K_mat: (N, 3, 4) is the set of feedback matrices
+        """
+        VN = self.VN([X[:, -1]]).toarray()[0, 0]  # double
+        V = VN  # value function
+        Vx, Vxx = np.zeros((4, 1)), np.zeros((4, 4))
+        for k in range(self.TH - 1, -1, -1):
+            if k == self.TH - 1:
+                Vx = self.VNx([X[:, -1]]).toarray()  # (4, 1)
+                Vxx = self.VNxx([X[:, -1]]).toarray()  # (4, 4)
+
+            Q_uu = self.Q_uu(X[:, k+1], U[:, k], self.beta, Vx, Vxx)  # DM(3, 3)
+            qu = self.qu(X[:, k+1], U[:, k], self.beta, Vx, Vxx)  # DM(3, 1)
+
+            A_u = cs.DM(self.A_u)  # DM(3, 3)
+
+            lb_a = self.lb_u - self.A_u @ U[:, k]
+            ub_a = self.ub_u - self.A_u @ U[:, k]
+
+            # solve the qp problem for feedforward k
+            qp = {'h': Q_uu.sparsity(),
+                  'a': A_u.sparsity()}
+            S = cs.conic('S', 'qpoases', qp)
+            r = S(h=Q_uu, \
+                  g=qu, \
+                  a=A_u, \
+                  lba = lb_a, \
+                  uba = ub_a)
+            du = r['x']  # suppose (3, 1)
+
+            # solve for feedback matrices K
+            eps = 1e-8
+            grad = qu.toarray() + Q_uu.toarray() @ du
+            c_x = np.where(np.bitwise_or(np.bitwise_and(np.abs(self.A_u @ U[:, k] - lb_a) < eps, self.A_u @ grad > 0), \
+                                         np.bitwise_and(np.abs(self.A_u @ U[:, k] - ub_a) < eps, self.A_u @ grad < 0)) == 1)
+            
+
+
+
     def forward_integration(self, X, U, k, K):
         """
             X: (4, N) is the array of current states
@@ -115,14 +244,14 @@ class buildDDPOptObj():
         for k in range(0, self.TH):
             uk_hat = U[:, k] + k + K @ (X_hat[:, k] - X[:, k])
             uk_hat = self.project_feasible(uk_hat)  # (3, 1)
-            X_hat[:, k+1] = self.f_xu(X_hat[:, k], uk_hat)
+            X_hat[:, k+1] = self.f_xu(X_hat[:, k], uk_hat).toarray()
         
         return X_hat
         
-    def solve(self, x_init, U_init, beta):
+    def solve_constrained_ddp(self, x_init, U_init):
         """
             x_init: (4, 1)
             U_init: (3, N)
             beta: list[3]
         """
-        self.beta = beta
+        
