@@ -29,10 +29,12 @@ class buildDDPOptObj():
         self.TH = timeHorizon
         self.miu = dyn_class.miu
         self.beta = dyn_class.beta
+        self.beta_value = None
         
         self.W_x = cs.diag(cs.SX(configDict['W_x']))
         self.W_u = cs.diag(cs.SX(configDict['W_u'][:3]))
         self.gamma_u = cs.diag(cs.SX(configDict['gamma_u']))
+        self.converge_eps = configDict['converge_eps']
         
         # input constraints
         self.A_u = np.array([[ 1, 0, 0],
@@ -184,15 +186,21 @@ class buildDDPOptObj():
         # )
         
         # test code
-        xx = [1.1, 2.2, 3.3, 4.4]
-        uu = [5, 6, 7]
-        nom_x = [1, 2, 3, 4]
-        beta = [0.07, 0.12, 0.01]
-        Vx_vec = np.random.rand(4, 1)
-        Vxx_mat = np.random.rand(4, 4)
-        var = xx, uu, beta, nom_x, Vx_vec, Vxx_mat
+        # xx = [1.1, 2.2, 3.3, 4.4]
+        # uu = [5, 6, 7]
+        # nom_x = [1, 2, 3, 4]
+        # beta = [0.07, 0.12, 0.01]
+        # Vx_vec = np.random.rand(4, 1)
+        # Vxx_mat = np.random.rand(4, 4)
+        # var = xx, uu, beta, nom_x, Vx_vec, Vxx_mat
         
-        import pdb; pdb.set_trace()
+    def set_nominal_traj(self, X_nom):
+        """
+            set the tracking states for DDP
+            ------input
+            X_nom: (4, N+1)
+        """
+        self.X_nom = X_nom
         
     def make_quadratic_approx(self):
         """
@@ -246,9 +254,9 @@ class buildDDPOptObj():
             X_hat: (4, N+1) is the array of updated states
         """
         X_hat = np.zeros((4, self.TH + 1))
-        X_hat[:, 0] = x0  # (4, 1)
+        X_hat[:, 0] = x0.squeeze()  # (4, 1)
         for k in range(0, self.TH):
-            X_hat[:, k+1] = X_hat[:, k] + self.f_xu(X_hat[:, k], U0[:, k], self.beta)
+            X_hat[:, k+1] = X_hat[:, k] + self.f_xu(X_hat[:, k], U0[:, k], self.beta_value).toarray().squeeze()
 
         return X_hat
 
@@ -257,13 +265,10 @@ class buildDDPOptObj():
             ------ input
             X: (4, N+1) is the array of forward integrated states
             U: (4, N) is the array of inputs
-            ------ output
-            k_vec: (N, 3) is the set of feedforward vectors
-            K_mat: (N, 3, 4) is the set of feedback matrices
         """
         self.make_quadratic_approx()
         
-        VN = self.VN([X[:, -1]]).toarray()[0, 0]  # double
+        VN = self.VN(X[:, -1], self.X_nom[:, -1]).toarray()[0, 0]  # double
         V = VN  # value function
         Vx, Vxx = np.zeros((4, 1)), np.zeros((4, 4))
         self.Vx_tensor, self.Vxx_tensor = np.zeros((self.TH, 4, 1)), np.zeros((self.TH, 4, 4))
@@ -271,16 +276,16 @@ class buildDDPOptObj():
         
         for k in range(self.TH - 1, -1, -1):
             if k == self.TH - 1:
-                Vx = self.VNx([X[:, -1]]).toarray()  # (4, 1)
-                Vxx = self.VNxx([X[:, -1]]).toarray()  # (4, 4)
+                Vx = self.VNx(X[:, -1], self.X_nom[:, -1]).toarray()  # (4, 1)
+                Vxx = self.VNxx(X[:, -1], self.X_nom[:, -1]).toarray()  # (4, 4)
 
             # calculate matrix values
-            Q_xx = self.Q_xx(X[:, k], U[:, k], self.beta, self.X_nom[:, k], Vx, Vxx)
-            Q_ux = self.Q_ux(X[:, k], U[:, k], self.beta, self.X_nom[:, k], Vx, Vxx)
-            Q_uu = self.Q_uu(X[:, k], U[:, k], self.beta, self.X_nom[:, k], Vx, Vxx)
-            qx = self.qx(X[:, k], U[:, k], self.beta, self.X_nom[:, k], Vx, Vxx)
-            qu = self.qu(X[:, k], U[:, k], self.beta, self.X_nom[:, k], Vx, Vxx)
-            
+            Q_xx = self.Q_xx(X[:, k], U[:, k], self.beta_value, self.X_nom[:, k], Vx, Vxx)
+            Q_ux = self.Q_ux(X[:, k], U[:, k], self.beta_value, self.X_nom[:, k], Vx, Vxx)
+            Q_uu = self.Q_uu(X[:, k], U[:, k], self.beta_value, self.X_nom[:, k], Vx, Vxx)
+            qx = self.qx(X[:, k], U[:, k], self.beta_value, self.X_nom[:, k], Vx, Vxx)
+            qu = self.qu(X[:, k], U[:, k], self.beta_value, self.X_nom[:, k], Vx, Vxx)
+                        
             self.Q_block['Q_xx'].insert(0, Q_xx)
             self.Q_block['Q_ux'].insert(0, Q_ux)
             self.Q_block['Q_uu'].insert(0, Q_uu)
@@ -301,13 +306,14 @@ class buildDDPOptObj():
                   a=A_u, \
                   lba = lb_a, \
                   uba = ub_a)
-            du = r['x']  # suppose (3, 1)
+            du = r['x'].toarray().squeeze()  # suppose (3, 1)
 
             # solve for feedback matrices K
             eps = 1e-8
-            grad = qu.toarray() + Q_uu.toarray() @ du
-            c_x = np.where(np.bitwise_or(np.bitwise_and(np.abs(self.A_u @ du - lb_a) < eps, self.A_u @ grad > 0), \
-                                         np.bitwise_and(np.abs(self.A_u @ du - ub_a) < eps, self.A_u @ grad < 0)) == 1)
+            grad = qu.toarray().squeeze() + Q_uu.toarray() @ du
+            c_x = np.where(np.bitwise_or(np.bitwise_and(np.abs(self.A_u @ du - lb_a) < eps, self.A_u @ grad > 0)[0], \
+                                         np.bitwise_and(np.abs(self.A_u @ du - ub_a) < eps, self.A_u @ grad < 0)[0]) == 1)[0]
+            import pdb; pdb.set_trace()
             invQ_uu = np.linalg.inv(Q_uu.toarray())
             invQ_uu[c_x, :] = 0
             
@@ -324,8 +330,6 @@ class buildDDPOptObj():
         """
             X: (4, N+1) is the array of current states
             U: (3, N) is the array of current inputs
-            k: (3, 1) is the feedforward vector
-            K: (3, 4) is the feedback matrix
         """
         X_hat, U_hat = np.zeros((4, self.TH + 1)), np.zeros((3, self.TH))
         X_hat[:, 0] = X[:, 0]  # (4, 1)
@@ -333,16 +337,41 @@ class buildDDPOptObj():
             k_vec, K_mat = self.k_vec[k, :], self.K_mat[k, ...]
             dx = X_hat[:, k] - X[:, k]
             U_hat[:, k] = self.project_feasible(k, U[:, k], k_vec + K_mat @ dx, dx)  # (3, 1)
-            X_hat[:, k+1] = X_hat[:, k] + self.f_xu(X_hat[:, k], U_hat[:, k]).toarray()
+            X_hat[:, k+1] = X_hat[:, k] + self.f_xu(X_hat[:, k], U_hat[:, k], self.beta_value).toarray().squeeze()
         
         return X_hat, U_hat
         
-    def solve_constrained_ddp(self, x_init, U_init):
+    def solve_constrained_ddp(self, x0, U0):
         """
-            x_init: (4, 1)
-            U_init: (3, N)
+            x0: (4, 1)
+            U0: (3, N)
             beta: list[3]
         """
+        check_converge = False  # skip convergence check during the first iteration
+        X_hat, U_hat, X, U = np.zeros((4, self.TH + 1)), \
+                             np.zeros((3, self.TH)), \
+                             np.zeros((4, self.TH + 1)), \
+                             np.zeros((3, self.TH))
+                             
+        # integrate forward after coldboot
+        X_init = self.coldboot_integration(x0, U0)
+        U_init = U0
+        
+        while True:
+            self.backward_propagation(X_init, U_init)
+            X_hat, U_hat = self.forward_integration(X_init, U_init)
+            
+            # convergence check
+            if np.linalg.norm([(X_hat[:, i] - X[:, i]).T @ self.W_x @ (X_hat[:, i] - X[:, i])] for i in range(self.TH + 1)) < self.converge_eps \
+               and \
+               np.linalg.norm([(U_hat[:, i] - U[:, i]).T @ self.W_u @ (U_hat[:, i] - U[:, i])] for i in range(self.TH + 1)) < self.converge_eps:
+                X, U = X_hat, U_hat
+                break
+            
+            X, U = X_hat, U_hat
+            
+        return X, U
+        
         
 if __name__ == '__main__':
     planning_config = sliding_pack.load_config('planning_switch_config.yaml')
@@ -353,8 +382,17 @@ if __name__ == '__main__':
     T = 2.5  # time of the simulation is seconds
     freq = 25  # number of increments per second
     dt = 1.0/freq  # sampling time
-    N = int(T*freq)  # total number of iterations
+    # N = int(T*freq)  # total number of iterations
+    N = 61
     ddpOptObj = buildDDPOptObj(dyn_class=dyn,
                                timeHorizon=N,
                                configDict=planning_config['TO'])
+    
+    X_nom = np.load('./X_nom.npy')
+    U_nom = np.load('./U_nom.npy')
+    x0 = X_nom[:, 0].reshape(4, 1)
+    U0 = U_nom
+    ddpOptObj.beta_value = [0.07, 0.12, 0.01]
+    ddpOptObj.set_nominal_traj(X_nom)
+    ddpOptObj.solve_constrained_ddp(x0, U0)
     

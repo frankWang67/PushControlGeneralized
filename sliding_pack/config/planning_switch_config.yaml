@@ -33,3 +33,5 @@ TO:
     codeGenFlag: False
     noPrintingFlag: False
     phases: null
+
+    converge_eps: 1e-8

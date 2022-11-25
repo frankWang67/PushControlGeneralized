@@ -13,8 +13,8 @@ dynamics:
     Kz_min: 50.
 
 TO:
-    # contactMode: 'sticking'  # 'sticking', 'sliding_cc', or 'sliding_mi'
-    contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
+    contactMode: 'sticking'  # 'sticking', 'sliding_cc', or 'sliding_mi'
+    # contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
     # contactMode: 'sliding_mi'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
     # contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
     solverName: 'ipopt'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'

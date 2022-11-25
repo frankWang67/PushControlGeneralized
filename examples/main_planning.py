@@ -75,11 +75,11 @@ elif optObj.numObs==2:
     obsCentre = [[0.2, 0.2], [0.1, 0.5]]
     obsRadius = [0.05, 0.05]
 elif optObj.numObs==3:
-    obsCentre = [[0.2, 0.2], [0.0, 0.4], [0.3, -0.05]]
+    obsCentre = [[0.2, 0.2], [0.0, 0.4], [0.3, -0.1]]
     obsRadius = [0.05, 0.05, 0.05]
 #  ------------------------------------------------------------------
-# x_init = [0., 0., -20.*(np.pi/180.), 0.]
-x_init = [0., 0., -20.*(np.pi/180.), -50.*(np.pi/180.)]
+x_init = [0., 0., -20.*(np.pi/180.), 0.]
+# x_init = [0., 0., -20.*(np.pi/180.), -50.*(np.pi/180.)]
 # x_init = [0.38, 0.22, -70.*(np.pi/180.), 0.]
 beta = [
     planning_config['dynamics']['xLenght'],
@@ -112,9 +112,14 @@ if save_to_file:
                     columns=['x_slider', 'y_slider', 'theta_slider', 'psi_pusher', 'x_pusher', 'y_pusher'])
     df_state.to_csv('planning_positive_angle_state.csv',
                     float_format='%.5f')
+    if planning_config['TO']['contactMode'] == 'sticking':
+        column_labels = ['u0', 'u1']
+    else:
+        column_labels = ['u0', 'u1', 'u2', 'u3']
+        
     df_action = pd.DataFrame(
                     np.array(U_nom_val_opt).transpose(),
-                    columns=['u0', 'u1', 'u3', 'u3'])
+                    columns=column_labels)
     df_action.to_csv('planning_positive_angle_action.csv',
                      float_format='%.5f')
     #  -------------------------------------------------------------------
