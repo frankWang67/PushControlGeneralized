@@ -1,10 +1,10 @@
-# Author: Joao Moura
-# Date: 21/08/2020
+# Author: Joao Moura (Modified by Yongpeng Jiang)
+# Date: 11/25/2022
 #  -------------------------------------------------------------------
 # Description:
-#  This script implements a non-linear program (NLP) model predictive controller (MPC)
-#  for tracking a trajectory of a square slider object with a single
-#  and sliding contact pusher.
+#  This script implements a Differential Dynamic Programming with
+#  exhaustive tree-search over mode sequences, which is used in
+#  plannar pushing task with obstacle avoidance.
 #  -------------------------------------------------------------------
 
 #  import libraries
