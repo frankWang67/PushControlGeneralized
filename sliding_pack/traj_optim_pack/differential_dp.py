@@ -14,7 +14,6 @@ import os
 import time
 import numpy as np
 import casadi as cs
-import cvxopt as cvx
 #  -------------------------------------------------------------------
 import sliding_pack
 #  -------------------------------------------------------------------
@@ -311,8 +310,10 @@ class buildDDPOptObj():
             # solve for feedback matrices K
             eps = 1e-8
             grad = qu.toarray().squeeze() + Q_uu.toarray() @ du
-            c_x = np.where(np.bitwise_or(np.bitwise_and(np.abs(self.A_u @ du - lb_a) < eps, self.A_u @ grad > 0)[0], \
-                                         np.bitwise_and(np.abs(self.A_u @ du - ub_a) < eps, self.A_u @ grad < 0)[0]) == 1)[0]
+            # index of active constraints
+            act_lb_a = np.where(np.linalg.norm(self.A_u @ du - lb_a) < eps)[0]
+            act_ub_a = np.where(np.linalg.norm(self.A_u @ du - ub_a) < eps)[0]
+            act_norm_a = -(self.A_u @ du)[act_lb_a]
             import pdb; pdb.set_trace()
             invQ_uu = np.linalg.inv(Q_uu.toarray())
             invQ_uu[c_x, :] = 0
