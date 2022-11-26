@@ -23,7 +23,7 @@ import sliding_pack
 # Get config files
 #  -------------------------------------------------------------------
 planning_config = sliding_pack.load_config('planning_config.yaml')
-planning_config['TO']['numObs'] = 2
+planning_config['TO']['numObs'] = 3
 #  -------------------------------------------------------------------
 
 # Set Problem constants
@@ -75,7 +75,7 @@ elif optObj.numObs==2:
     obsCentre = [[0.2, 0.2], [0.1, 0.5]]
     obsRadius = [0.05, 0.05]
 elif optObj.numObs==3:
-    obsCentre = [[0.2, 0.2], [0.0, 0.4], [0.3, 0.0]]
+    obsCentre = [[0.1, 0.075], [0.0, 0.3], [0.3, -0.025]]
     obsRadius = [0.05, 0.05, 0.05]
 #  ------------------------------------------------------------------
 x_init = [0., 0., -20.*(np.pi/180.), 0.]
@@ -91,7 +91,6 @@ resultFlag, X_nom_val_opt, U_nom_val_opt, other_opt, _, t_opt = optObj.solveProb
         X_warmStart=X_nom_val,
         obsCentre=obsCentre, obsRadius=obsRadius,
         X_goal_val=X_goal)
-import pdb; pdb.set_trace()
 f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u, beta)*dt])
 f_rollout = f_d.mapaccum(N-1)
 print('comp time: ', t_opt)
@@ -147,7 +146,7 @@ if show_anim:
             repeat=False,
     )
     # to save animation, uncomment the line below:
-    # ani.save('planning_with_obstacles.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    ani.save('planning_with_obstacles.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 # # Plot Optimization Results

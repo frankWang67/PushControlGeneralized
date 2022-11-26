@@ -74,4 +74,3 @@ for ny in range(N):
         yy += (k1_y + 2*k2_y + 2*k3_y + k4_y)/6
 rect_cs = cs.Function('rect_cs', [xLenght, yLenght], [Q])
 square_cs = cs.Function('square_cs', [sLenght], [rect_cs(sLenght, sLenght)])
-import pdb; pdb.set_trace()
