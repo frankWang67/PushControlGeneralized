@@ -1,5 +1,6 @@
 #
-# Configuration file for tracking using sliding
+# Configuration file for tracking using sliding, face switching
+# and obstacle avoidance
 # 
 
 dynamics:
@@ -13,14 +14,17 @@ dynamics:
     Kz_min: 50.
 
 TO:
-    contactMode: 'sticking'  # 'sticking', 'sliding_cc', or 'sliding_mi'
-    # contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
+    # contactMode: 'sticking'  # 'sticking', 'sliding_cc', or 'sliding_mi'
+    contactMode: 'sliding_mi'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
     # contactMode: 'sliding_mi'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
     # contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
     solverName: 'ipopt'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
     # solverName: 'knitro'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
     W_x: [1.0, 1.0, 0.01, 0.001]  # diagonal state weights
-    W_u: [0., 0., 0., 0.]  # diagonal control weights
+    # W_u: [0., 0., 0., 0.]  # diagonal control weights
+    W_u: [1.0, 1.0, 0.1]
+    gamma_u: [1, 1, 0.1]  # diagonal control variation weights in DDP's feasibility projection in the
+                          # forwarding process
     K_goal: 1
     X_goal: [0.4, 0.2, 0.3, 0.]
     numObs: 2
@@ -29,3 +33,5 @@ TO:
     codeGenFlag: False
     noPrintingFlag: False
     phases: null
+
+    converge_eps: 1e-8

@@ -1,10 +1,10 @@
-# Author: Joao Moura
-# Date: 21/08/2020
+# Author: Joao Moura (Modified by Yongpeng Jiang)
+# Date: 11/25/2022
 #  -------------------------------------------------------------------
 # Description:
-#  This script implements a non-linear program (NLP) model predictive controller (MPC)
-#  for tracking a trajectory of a square slider object with a single
-#  and sliding contact pusher.
+#  This script implements a Differential Dynamic Programming with
+#  exhaustive tree-search over mode sequences, which is used in
+#  plannar pushing task with obstacle avoidance.
 #  -------------------------------------------------------------------
 
 #  import libraries
@@ -75,11 +75,11 @@ elif optObj.numObs==2:
     obsCentre = [[0.2, 0.2], [0.1, 0.5]]
     obsRadius = [0.05, 0.05]
 elif optObj.numObs==3:
-    obsCentre = [[0.1, 0.075], [0.0, 0.3], [0.3, --0.125]]
+    obsCentre = [[0.2, 0.2], [0.0, 0.4], [0.3, -0.05]]
     obsRadius = [0.05, 0.05, 0.05]
 #  ------------------------------------------------------------------
-x_init = [0., 0., -20.*(np.pi/180.), 0.]
-# x_init = [0., 0., -20.*(np.pi/180.), -50.*(np.pi/180.)]
+# x_init = [0., 0., -20.*(np.pi/180.), 0.]
+x_init = [0., 0., -20.*(np.pi/180.), -50.*(np.pi/180.)]
 # x_init = [0.38, 0.22, -70.*(np.pi/180.), 0.]
 beta = [
     planning_config['dynamics']['xLenght'],
@@ -112,14 +112,9 @@ if save_to_file:
                     columns=['x_slider', 'y_slider', 'theta_slider', 'psi_pusher', 'x_pusher', 'y_pusher'])
     df_state.to_csv('planning_positive_angle_state.csv',
                     float_format='%.5f')
-    if planning_config['TO']['contactMode'] == 'sticking':
-        column_labels = ['u0', 'u1']
-    else:
-        column_labels = ['u0', 'u1', 'u2', 'u3']
-        
     df_action = pd.DataFrame(
                     np.array(U_nom_val_opt).transpose(),
-                    columns=column_labels)
+                    columns=['u0', 'u1', 'u3', 'u3'])
     df_action.to_csv('planning_positive_angle_action.csv',
                      float_format='%.5f')
     #  -------------------------------------------------------------------
@@ -155,7 +150,7 @@ if show_anim:
             repeat=False,
     )
     # to save animation, uncomment the line below:
-    ani.save('planning_with_obstacles.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    # ani.save('planning_with_obstacles.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 # # Plot Optimization Results
