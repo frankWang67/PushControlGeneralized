@@ -12,18 +12,21 @@
 import sys
 import os
 import time
+from matplotlib import pyplot as plt
 import numpy as np
+import sympy
 import casadi as cs
 #  -------------------------------------------------------------------
 import sliding_pack
 #  -------------------------------------------------------------------
 
 class buildDDPOptObj():
-    def __init__(self, dyn_class, timeHorizon, configDict) -> None:
+    def __init__(self, dt, dyn_class, timeHorizon, configDict) -> None:
         """
             configDict: the key ['TO'] of .yaml file
         """
         # init parameters
+        self.dt = dt
         self.dyn = dyn_class
         self.TH = timeHorizon
         self.miu = dyn_class.miu
@@ -32,7 +35,9 @@ class buildDDPOptObj():
         
         self.W_x = cs.diag(cs.SX(configDict['W_x']))
         self.W_u = cs.diag(cs.SX(configDict['W_u'][:3]))
-        self.gamma_u = cs.diag(cs.SX(configDict['gamma_u']))
+        self.W_x_arr = np.diag(configDict['W_x'])
+        self.W_u_arr = np.diag(configDict['W_u'][:3])
+        self.gamma_u = cs.DM(cs.diag(configDict['gamma_u']))
         self.converge_eps = configDict['converge_eps']
         
         # input constraints
@@ -42,15 +47,15 @@ class buildDDPOptObj():
                              [self.miu,-1, 0],
                              [self.miu, 1, 0]])
 
-        self.lb_u = np.array([[0, -self.dyn.f_lim, -self.dyn.psi_dot_lim, 0, 0]])
+        self.lb_u = np.array([0, -self.dyn.f_lim, -self.dyn.psi_dot_lim, 0, 0])
 
-        self.ub_u = np.array([[self.dyn.f_lim, self.dyn.f_lim, self.dyn.psi_dot_lim, np.inf, np.inf]])
+        self.ub_u = np.array([self.dyn.f_lim, self.dyn.f_lim, self.dyn.psi_dot_lim, np.inf, np.inf])
         
         # dynamic functions
         self.f_xu = cs.Function(
             'f_xu',
             [self.dyn.x, self.dyn.u, self.dyn.beta],
-            [self.dyn.f_(self.dyn.x, self.dyn.u, self.dyn.beta)],
+            [self.dyn.x + self.dyn.f_(self.dyn.x, self.dyn.u, self.dyn.beta) * self.dt],
             ['x', 'u', 'b'],
             ['f_xu']
         )
@@ -84,7 +89,7 @@ class buildDDPOptObj():
              + cs.dot(self.dyn.u, cs.mtimes(self.W_u, self.dyn.u))]
         )
         
-        __cost_VN = cs.dot((self.dyn.x - __nom_x), cs.mtimes(self.W_x, (self.dyn.x - __nom_x)))
+        __cost_VN = cs.dot((self.dyn.x - __nom_x), cs.mtimes(100 * self.W_x, (self.dyn.x - __nom_x)))
 
         # first and second derivatives of V_{k+1}, l and f
         __lx = cs.gradient(__cost_l(self.dyn.x, self.dyn.u, __nom_x), self.dyn.x)
@@ -92,8 +97,8 @@ class buildDDPOptObj():
         __lxx = cs.hessian(__cost_l(self.dyn.x, self.dyn.u, __nom_x), self.dyn.x)[0]
         __luu = cs.hessian(__cost_l(self.dyn.x, self.dyn.u, __nom_x), self.dyn.u)[0]
         __lux = cs.jacobian(cs.gradient(__cost_l(self.dyn.x, self.dyn.u, __nom_x), self.dyn.u), self.dyn.x)
-        __fx = cs.jacobian(self.f_xu(self.dyn.x, self.dyn.u, self.beta), self.dyn.x)
-        __fu = cs.jacobian(self.f_xu(self.dyn.x, self.dyn.u, self.beta), self.dyn.u)
+        __fx = cs.jacobian(self.f_xu(self.dyn.x, self.dyn.u, self.beta), self.dyn.x)  # checked
+        __fu = cs.jacobian(self.f_xu(self.dyn.x, self.dyn.u, self.beta), self.dyn.u)  # checked
         __fxx = [cs.hessian(self.f_xu(self.dyn.x, self.dyn.u, self.beta)[i], self.dyn.x)[0] for i in range(4)]
         __fuu = [cs.hessian(self.f_xu(self.dyn.x, self.dyn.u, self.beta)[i], self.dyn.u)[0] for i in range(4)]
         __fux = [cs.jacobian(cs.gradient(self.f_xu(self.dyn.x, self.dyn.u, self.dyn.beta)[i], self.dyn.u), self.dyn.x) for i in range(4)]
@@ -157,7 +162,7 @@ class buildDDPOptObj():
         self.qx = cs.Function(
             'qx',
             [self.dyn.x, self.dyn.u, self.dyn.beta, __nom_x, __Vx, __Vxx],
-            [__lx + cs.mtimes(__fx.T, __Vx)]
+            [__qx]
         )
 
         self.qu = cs.Function(
@@ -166,11 +171,44 @@ class buildDDPOptObj():
             [__qu]
         )
         
-        # self.fx = cs.Function(
-        #     'fu',
-        #     [self.dyn.x, self.dyn.u, self.dyn.beta, __nom_x, __Vx, __Vxx],
-        #     [__fx]
-        # )
+        self.fx = cs.Function(
+            'fx',
+            [self.dyn.x, self.dyn.u, self.dyn.beta, __nom_x, __Vx, __Vxx],
+            [__fx]
+        )
+        
+        self.fu = cs.Function(
+            'fu',
+            [self.dyn.x, self.dyn.u, self.dyn.beta, __nom_x, __Vx, __Vxx],
+            [__fu]
+        )
+        
+        self.luu = cs.Function(
+            'luu',
+            [self.dyn.x, self.dyn.u, self.dyn.beta, __nom_x, __Vx, __Vxx],
+            [__luu]
+        )
+        
+        self.fxx = cs.Function(
+            'fxx',
+            [self.dyn.x, self.dyn.u, self.dyn.beta, __nom_x, __Vx, __Vxx],
+            [__fxx[0], __fxx[1], __fxx[2], __fxx[3]]
+        )
+        
+        self.fuu = cs.Function(
+            'fuu',
+            [self.dyn.x, self.dyn.u, self.dyn.beta, __nom_x, __Vx, __Vxx],
+            [__fuu[0], __fuu[1], __fuu[2], __fuu[3]]
+        )
+        
+        self.fux = cs.Function(
+            'fux',
+            [self.dyn.x, self.dyn.u, self.dyn.beta, __nom_x, __Vx, __Vxx],
+            [__fux[0], __fux[1], __fux[2], __fux[3]]
+        )
+        
+        self.cost_l = __cost_l
+        self.cost_VN = __cost_VN
         
         # self.lx = cs.Function(
         #     'lu',
@@ -191,6 +229,7 @@ class buildDDPOptObj():
         # beta = [0.07, 0.12, 0.01]
         # Vx_vec = np.random.rand(4, 1)
         # Vxx_mat = np.random.rand(4, 4)
+        # Vxx_mat = Vxx_mat @ Vxx_mat.T
         # var = xx, uu, beta, nom_x, Vx_vec, Vxx_mat
         
     def set_nominal_traj(self, X_nom):
@@ -200,6 +239,18 @@ class buildDDPOptObj():
             X_nom: (4, N+1)
         """
         self.X_nom = X_nom
+        
+    def compute_cost_function(self, X_opt, U_opt):
+        """
+            compute cost of the current X, U trajectory
+        """
+        cost = 0
+        for k in range(self.TH):
+            cost += (X_opt[:, k] - self.X_nom[:, k]).T @ self.W_x_arr @ (X_opt[:, k] - self.X_nom[:, k])
+            cost += U_opt[:, k].T @ self.W_u_arr @ U_opt[:, k]
+        cost += (X_opt[:, -1] - self.X_nom[:, -1]).T @ self.W_x_arr @ (X_opt[:, -1] - self.X_nom[:, -1])
+        
+        return cost
         
     def make_quadratic_approx(self):
         """
@@ -234,15 +285,19 @@ class buildDDPOptObj():
         
         qp = {'h': H.sparsity(),
               'a': A_u.sparsity()}
-        S = cs.conic('S', 'qpoases', qp)
-        r = S(h=H, \
-              g=G, \
-              a=A_u, \
-              lba = lb_a, \
-              uba = ub_a)
+        S = cs.conic('S', 'qpoases', qp, {'printLevel': 'none'})
+        try:
+            r = S(h=H, \
+                g=G, \
+                a=A_u, \
+                lba = lb_a, \
+                uba = ub_a)
+        except:
+            import pdb; pdb.set_trace()
+        
         duk_hat = r['x']  # suppose (3, 1)
         
-        return uk + duk_hat
+        return uk + duk_hat.toarray().squeeze()
         
     def coldboot_integration(self, x0, U0):
         """
@@ -255,9 +310,33 @@ class buildDDPOptObj():
         X_hat = np.zeros((4, self.TH + 1))
         X_hat[:, 0] = x0.squeeze()  # (4, 1)
         for k in range(0, self.TH):
-            X_hat[:, k+1] = X_hat[:, k] + self.f_xu(X_hat[:, k], U0[:, k], self.beta_value).toarray().squeeze()
+            X_hat[:, k+1] = self.f_xu(X_hat[:, k], U0[:, k], self.beta_value).toarray().squeeze()
 
         return X_hat
+    
+    def total_cost(self, iter, X, U):
+        cost = 0
+        X_forward = X
+        for k in range(iter, min(iter + 2, self.TH)):
+            cost += self.cost_l(X_forward[:, k], U[:, k], self.X_nom[:, k])
+            X_forward[:, k+1] = self.f_xu(X_forward[:, k], U[:, k], self.beta_value).toarray().squeeze()
+        # cost += self.VN(X_forward[:, -1], self.X_nom[:, -1])
+        
+        return cost
+    
+    def line_search_over_k(self, iter, X, U, uk_forward, uk_back):
+        alpha = 1.0
+        base_cost = self.total_cost(iter, X, U)
+        U_new = U
+        while True:
+            # import pdb; pdb.set_trace()
+            U_new[:, iter] = U[:, iter] + alpha * uk_forward.squeeze() + uk_back.squeeze()
+            if self.total_cost(iter, X, U_new) >= base_cost and alpha >= 0.0001:
+                alpha = 0.5 * alpha
+            else:
+                break
+        
+        return alpha
 
     def backward_propagation(self, X, U):
         """
@@ -299,30 +378,58 @@ class buildDDPOptObj():
             # solve the qp problem for feedforward k
             qp = {'h': Q_uu.sparsity(),
                   'a': A_u.sparsity()}
-            S = cs.conic('S', 'qpoases', qp)
-            r = S(h=Q_uu, \
-                  g=qu, \
-                  a=A_u, \
-                  lba = lb_a, \
-                  uba = ub_a)
+            S = cs.conic('S', 'qpoases', qp, {'printLevel': 'none'})
+            try:
+                r = S(h=Q_uu, \
+                      g=qu, \
+                      a=A_u, \
+                      lba=lb_a.reshape(-1, 1), \
+                      uba=ub_a.reshape(-1, 1))
+            except:
+                import pdb; pdb.set_trace()
             du = r['x'].toarray().squeeze()  # suppose (3, 1)
-
+            
             # solve for feedback matrices K
             eps = 1e-8
-            grad = qu.toarray().squeeze() + Q_uu.toarray() @ du
+            """
+                (Imple1) Free dimension decomposition.
+            """
             # index of active constraints
-            act_lb_a = np.where(np.linalg.norm(self.A_u @ du - lb_a) < eps)[0]
-            act_ub_a = np.where(np.linalg.norm(self.A_u @ du - ub_a) < eps)[0]
-            act_norm_a = -(self.A_u @ du)[act_lb_a]
-            import pdb; pdb.set_trace()
-            invQ_uu = np.linalg.inv(Q_uu.toarray())
-            invQ_uu[c_x, :] = 0
+            act_cst = np.bitwise_or(np.abs(self.A_u @ du - lb_a).squeeze() < eps, np.abs(self.A_u @ du - ub_a).squeeze() < eps)
+            act_cst = self.A_u[act_cst].reshape(-1, 3)  # active constraints
+            act_null = sympy.Matrix(act_cst).nullspace()
+            act_null = [np.array(act_null[i]).squeeze().tolist() for i in range(len(act_null))]
+            act_null = np.array(act_null).T.astype(np.double)
+            K_mat = -np.linalg.inv(Q_uu.toarray() + 5 * np.eye(3)) @ Q_ux.toarray()
+            if len(act_null) == 0:
+                K_mat = np.zeros_like(K_mat)
+            else:
+                K_mat = act_null @ np.linalg.inv(act_null.T @ act_null) @ act_null.T @ K_mat
+
+            self.k_vec[k, :] = np.expand_dims(du, axis=1)
+            self.K_mat[k, :] = K_mat
             
-            self.k_vec[k, :] = np.array(du)
-            self.K_mat[k, ...] = -invQ_uu @ Q_ux.toarray()
+            """
+                (Imple2) Free dimension decomposition, for box constraints.
+            """
+            """
+            grad_du = qu + Q_uu @ du
+            c_du = np.bitwise_or(np.bitwise_and(np.abs(A_u @ du - lb_a) < eps, np.array(A_u @ grad_du) > 0),
+                                 np.bitwise_and(np.abs(A_u @ du - ub_a) < eps, np.array(A_u @ grad_du) < 0)).squeeze()
+            f_du = np.bitwise_not(c_du)
+            
+            Q_uuff, Q_uxf = Q_uu.toarray(), Q_ux.toarray()
+            Q_uuff[np.ix_(c_du, c_du)] = 0
+            Q_uuff[np.ix_(f_du, f_du)] = np.linalg.inv(Q_uuff[np.ix_(f_du, f_du)])
+            
+            Q_uxf[c_du] = 0
+            
+            self.k_vec[k, :] = np.expand_dims(du, axis=1)
+            self.K_mat[k, :] = -Q_uuff @ Q_uxf
+            """
             
             # propagate value
-            V += 0.5 * self.k_vec[k, :] @ Q_uu.toarray() @ self.k_vec[k, :]
+            V += 0.5 * self.k_vec[k, :].T @ Q_uu.toarray() @ self.k_vec[k, :]
             Vx = qx - self.K_mat[k, ...].T @ Q_uu.toarray() @ self.k_vec[k, :]
             Vxx = Q_xx - self.K_mat[k, ...].T @ Q_uu.toarray() @ self.K_mat[k, ...]
             self.Vx_tensor[k, :], self.Vxx_tensor[k, ...] = Vx, Vxx
@@ -336,9 +443,10 @@ class buildDDPOptObj():
         X_hat[:, 0] = X[:, 0]  # (4, 1)
         for k in range(0, self.TH):
             k_vec, K_mat = self.k_vec[k, :], self.K_mat[k, ...]
-            dx = X_hat[:, k] - X[:, k]
-            U_hat[:, k] = self.project_feasible(k, U[:, k], k_vec + K_mat @ dx, dx)  # (3, 1)
-            X_hat[:, k+1] = X_hat[:, k] + self.f_xu(X_hat[:, k], U_hat[:, k], self.beta_value).toarray().squeeze()
+            dx = np.expand_dims(X_hat[:, k] - X[:, k], 1)
+            # alpha = self.line_search_over_k(k, X_hat, U, k_vec, K_mat @ dx)
+            U_hat[:, k] = self.project_feasible(k, U[:, k], 0.2 * k_vec + K_mat @ dx, dx)  # (3, 1)
+            X_hat[:, k+1] = self.f_xu(X_hat[:, k], U_hat[:, k], self.beta_value).toarray().squeeze()
         
         return X_hat, U_hat
         
@@ -349,28 +457,42 @@ class buildDDPOptObj():
             beta: list[3]
         """
         check_converge = False  # skip convergence check during the first iteration
-        X_hat, U_hat, X, U = np.zeros((4, self.TH + 1)), \
-                             np.zeros((3, self.TH)), \
-                             np.zeros((4, self.TH + 1)), \
-                             np.zeros((3, self.TH))
+        X_hat, U_hat = np.zeros((4, self.TH + 1)), \
+                       np.zeros((3, self.TH))
+        cost = []
                              
         # integrate forward after coldboot
-        X_init = self.coldboot_integration(x0, U0)
-        U_init = U0
+        X = self.coldboot_integration(x0, U0)
+        U = U0
+        import pdb; pdb.set_trace()
         
         while True:
-            self.backward_propagation(X_init, U_init)
-            X_hat, U_hat = self.forward_integration(X_init, U_init)
+            self.backward_propagation(X, U)
+            X_hat, U_hat = self.forward_integration(X, U)
+            
+            # import pdb; pdb.set_trace()
+            
+            cost.append(self.compute_cost_function(X, U))
             
             # convergence check
-            if np.linalg.norm([(X_hat[:, i] - X[:, i]).T @ self.W_x @ (X_hat[:, i] - X[:, i])] for i in range(self.TH + 1)) < self.converge_eps \
+            # import pdb; pdb.set_trace()
+            if check_converge == True:
+                print('error X: ', np.linalg.norm([(X_hat[:, i] - X[:, i]).T @ self.W_x_arr @ (X_hat[:, i] - X[:, i]) for i in range(self.TH + 1)]))
+                print('error U: ', np.linalg.norm([(U_hat[:, i] - U[:, i]).T @ self.W_u_arr @ (U_hat[:, i] - U[:, i]) for i in range(self.TH)]))
+                print('cost: ', cost[-1])
+            
+            if check_converge == True \
                and \
-               np.linalg.norm([(U_hat[:, i] - U[:, i]).T @ self.W_u @ (U_hat[:, i] - U[:, i])] for i in range(self.TH + 1)) < self.converge_eps:
+               np.linalg.norm([(X_hat[:, i] - X[:, i]).T @ self.W_x_arr @ (X_hat[:, i] - X[:, i]) for i in range(self.TH + 1)]) < 0.00001 \
+               and \
+               np.linalg.norm([(U_hat[:, i] - U[:, i]).T @ self.W_u_arr @ (U_hat[:, i] - U[:, i]) for i in range(self.TH)]) < 0.0001:
                 X, U = X_hat, U_hat
                 break
             
             X, U = X_hat, U_hat
-            
+            check_converge = True
+        
+        import pdb; pdb.set_trace()
         return X, U
         
         
@@ -385,15 +507,22 @@ if __name__ == '__main__':
     dt = 1.0/freq  # sampling time
     # N = int(T*freq)  # total number of iterations
     N = 61
-    ddpOptObj = buildDDPOptObj(dyn_class=dyn,
+    ddpOptObj = buildDDPOptObj(dt=dt,
+                               dyn_class=dyn,
                                timeHorizon=N,
                                configDict=planning_config['TO'])
     
     X_nom = np.load('./X_nom.npy')
     U_nom = np.load('./U_nom.npy')
-    x0 = X_nom[:, 0].reshape(4, 1)
+    X_real = np.load('./X_real.npy')
+    x0 = X_real[:, 0].reshape(4, 1)
+    x0[-1] -= 0.07
     U0 = U_nom
     ddpOptObj.beta_value = [0.07, 0.12, 0.01]
-    ddpOptObj.set_nominal_traj(X_nom)
-    ddpOptObj.solve_constrained_ddp(x0, U0)
+    ddpOptObj.set_nominal_traj(X_real)
+    X, U = ddpOptObj.solve_constrained_ddp(x0, U0)
+    
+    import pdb; pdb.set_trace()
+    
+    np.save('../../examples/X_opt.npy', X)
     

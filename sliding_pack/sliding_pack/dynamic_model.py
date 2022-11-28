@@ -88,6 +88,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         __Area = __xl*__yl
         __int_Area = sliding_pack.integral.rect_cs(__xl, __yl)
         __c = __int_Area/__Area # ellipsoid approximation ratio
+        self.c = cs.Function('c', [__x, __beta], [__c], ['x', 'b'], ['c'])
         __A = cs.SX.sym('__A', cs.Sparsity.diag(3))
         __A[0,0] = __A[1,1] = 1.; __A[2,2] = 1./(__c**2);
         __ctheta = cs.cos(__theta)
@@ -117,6 +118,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         # dynamics
         __Jc = cs.SX(2,3)
         __Jc[0,0] = 1; __Jc[1,1] = 1; __Jc[0,2] = -__yc; __Jc[1,2] = __xc;  # contact jacobian
+        self.RAJc = cs.Function('RAJc', [__x,__beta], [cs.mtimes(cs.mtimes(__R, __A), __Jc.T)], ['x', 'b'], ['f'])
         __f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(__R,__A),cs.mtimes(__Jc.T,__u[0:2])),__u[2]))
         #  -------------------------------------------------------------------
         self.f_ = cs.Function('f_', [__x,__u,__beta], [__f], ['x', 'u', 'b'], ['f'])  # compute (f(x, u)) from state variables, input variables and slider geometry

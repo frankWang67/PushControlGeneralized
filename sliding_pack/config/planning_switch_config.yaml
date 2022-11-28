@@ -9,7 +9,8 @@ dynamics:
     pusherRadious: 0.01 #  [meter]
     pusherFricCoef: 0.2
     pusherForceLim:  0.3
-    pusherAngleVelLim: 3.0
+    # pusherAngleVelLim: 3.0
+    pusherAngleVelLim: 0.0
     Kz_max: 50.
     Kz_min: 50.
 
@@ -22,7 +23,7 @@ TO:
     # solverName: 'knitro'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
     W_x: [1.0, 1.0, 0.01, 0.001]  # diagonal state weights
     # W_u: [0., 0., 0., 0.]  # diagonal control weights
-    W_u: [1.0, 1.0, 0.1]
+    W_u: [0., 0., 0.]
     gamma_u: [1, 1, 0.1]  # diagonal control variation weights in DDP's feasibility projection in the
                           # forwarding process
     K_goal: 1
@@ -34,4 +35,4 @@ TO:
     noPrintingFlag: False
     phases: null
 
-    converge_eps: 1e-8
+    converge_eps: 0.00000001
