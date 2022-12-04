@@ -23,7 +23,7 @@ import sliding_pack
 # Get config files
 #  -------------------------------------------------------------------
 planning_config = sliding_pack.load_config('planning_config.yaml')
-planning_config['TO']['numObs'] = 3
+planning_config['TO']['numObs'] = 0
 #  -------------------------------------------------------------------
 
 # Set Problem constants
@@ -43,7 +43,8 @@ N = int(T*freq)  # total number of iterations
 #  -------------------------------------------------------------------
 dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
         planning_config['dynamics'],
-        planning_config['TO']['contactMode']
+        planning_config['TO']['contactMode'],
+        planning_config['TO']['contactFace']
 )
 #  -------------------------------------------------------------------
 
@@ -75,10 +76,10 @@ elif optObj.numObs==2:
     obsCentre = [[0.2, 0.2], [0.1, 0.5]]
     obsRadius = [0.05, 0.05]
 elif optObj.numObs==3:
-    obsCentre = [[0.1, 0.075], [0.0, 0.3], [0.3, -0.125]]
+    obsCentre = [[0.1, 0.1], [0.0, 0.3], [0.3, -0.125]]
     obsRadius = [0.05, 0.05, 0.05]
 #  ------------------------------------------------------------------
-x_init = [0., 0., -20.*(np.pi/180.), 0.]
+x_init = [0., -0.12, -20.*(np.pi/180.), 0.]
 # x_init = [0., 0., -20.*(np.pi/180.), -50.*(np.pi/180.)]
 # x_init = [0.38, 0.22, -70.*(np.pi/180.), 0.]
 beta = [
@@ -93,7 +94,7 @@ resultFlag, X_nom_val_opt, U_nom_val_opt, other_opt, _, t_opt = optObj.solveProb
         obsCentre=obsCentre, obsRadius=obsRadius,
         X_goal_val=X_goal)
 
-# import pdb; pdb.set_trace()
+import pdb; pdb.set_trace()
 
 f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u, beta)*dt])
 f_rollout = f_d.mapaccum(N-1)
@@ -126,8 +127,7 @@ if save_to_file:
 
 # Animation
 #  -------------------------------------------------------------------
-import pdb; pdb.set_trace()
-X_nom_val_opt = np.load('./X_opt.npy')
+# X_nom_val_opt = np.load('./X_opt.npy')
 plt.rcParams['figure.dpi'] = 150
 if show_anim:
     #  ---------------------------------------------------------------

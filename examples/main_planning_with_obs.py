@@ -47,6 +47,8 @@ dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
 )
 #  -------------------------------------------------------------------
 
+import pdb; pdb.set_trace()
+
 # Generate Nominal Trajectory
 #  -------------------------------------------------------------------
 X_goal = planning_config['TO']['X_goal']

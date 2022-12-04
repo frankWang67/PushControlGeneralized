@@ -20,10 +20,11 @@ import sliding_pack
 
 class Sys_sq_slider_quasi_static_ellip_lim_surf():
 
-    def __init__(self, configDict, contactMode='sticking'):
+    def __init__(self, configDict, contactMode='sticking', contactFace='-x', pusherAngleLim=0.):
 
         # init parameters
         self.mode = contactMode
+        self.face = contactFace
         # self.sl = configDict['sideLenght']  # side dimension of the square slider [m]
         self.miu = configDict['pusherFricCoef']  # fric between pusher and slider
         self.f_lim = configDict['pusherForceLim']
@@ -44,7 +45,13 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         # beta[2] - r_pusher
         #  -------------------------------------------------------------------
         # self.psi_lim = 0.9*cs.arctan2(self.beta[0], self.beta[1])
-        self.psi_lim = 0.9
+        if self.mode == 'sticking':
+            self.psi_lim = pusherAngleLim
+        else:
+            if self.face == '-x' or self.face == '+x':
+                self.psi_lim = 0.9
+            elif self.face == '-y' or self.face == '+y':
+                self.psi_lim = 0.405088
 
         # system constant variables
         self.Nx = 4  # number of state variables
@@ -90,7 +97,8 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         __c = __int_Area/__Area # ellipsoid approximation ratio
         self.c = cs.Function('c', [__x, __beta], [__c], ['x', 'b'], ['c'])
         __A = cs.SX.sym('__A', cs.Sparsity.diag(3))
-        __A[0,0] = __A[1,1] = 1.; __A[2,2] = 1./(__c**2);
+        __A[0,0] = __A[1,1] = 1.; __A[2,2] = 1./(__c**2)
+        self.A = cs.Function('A', [__beta], [__A], ['b'], ['A'])
         __ctheta = cs.cos(__theta)
         __stheta = cs.sin(__theta)
         __R = cs.SX(3, 3)  # anti-clockwise rotation matrix (from {Slider} to {World})
@@ -98,15 +106,35 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         #  -------------------------------------------------------------------
         self.R = cs.Function('R', [__x], [__R], ['x'], ['R'])  # (rotation matrix from {Slider} to {World})
         #  -------------------------------------------------------------------
-        # slider frame ({x} forward, {y} left)
-        # slider position
-        __xc = -__xl/2; __yc = -(__xl/2)*cs.tan(__psi)  # ({Contact Point} in {Slider})
-        __rc = cs.SX(2,1); __rc[0] = __xc-__r_pusher; __rc[1] = __yc  # ({Pusher Center} in {Slider})
-        __p_pusher = cs.mtimes(__R[0:2,0:2], __rc)[0:2] + __x[0:2]  # ({Pusher Center} in {World})
-        #  -------------------------------------------------------------------
         __p = cs.SX.sym('p', 2) # pusher position
         __rc_prov = cs.mtimes(__R[0:2,0:2].T, __p - __x[0:2])  # (Real {Pusher Center} in {Slider})
+        #  -------------------------------------------------------------------
+        # slider frame ({x} forward, {y} left)
+        # slider position
+        # if self.face == '-x':
+        __xc = -__xl/2; __yc = -(__xl/2)*cs.tan(__psi)  # ({Contact Point} in {Slider})
+        __rc = cs.SX(2,1); __rc[0] = __xc-__r_pusher; __rc[1] = __yc  # ({Pusher Center} in {Slider})
+        #  -------------------------------------------------------------------
         __psi_prov = -cs.atan2(__rc_prov[1], __xl/2)  # (Real {φ_c})
+        # elif self.face == '+x':
+        #     __xc = __xl/2; __yc = __xl/2*cs.tan(__psi)  # ({Contact Point} in {Slider})
+        #     __rc = cs.SX(2,1); __rc[0] = __xc+__r_pusher; __rc[1] = __yc  # ({Pusher Center} in {Slider})
+        #     #  -------------------------------------------------------------------
+        #     __psi_prov = -cs.atan2(__rc_prov[1], -__xl/2)  # (Real {φ_c})
+        # elif self.face == '-y' or self.face == '+y':
+        #     __xc = -(__yl/2)/cs.tan(__psi) if np.abs(__psi - 0.5 * np.pi) > 1e-3 else 0.; __yc = -__yl/2  # ({Contact Point} in {Slider})
+        #     __rc = cs.SX(2,1); __rc[0] = __xc; __rc[1] = __yc-__r_pusher  # ({Pusher Center} in {Slider})
+        #     #  -------------------------------------------------------------------
+        #     __psi_prov = -cs.atan2(__yl/2, __rc_prov[0]) + cs.pi  # (Real {φ_c})
+        # else:
+        #     __xc = (__yl/2)/cs.tan(__psi) if np.abs(__psi + 0.5 * np.pi) > 1e-3 else 0.; __yc = __yl/2  # ({Contact Point} in {Slider})
+        #     __rc = cs.SX(2,1); __rc[0] = __xc; __rc[1] = __yc+__r_pusher  # ({Pusher Center} in {Slider})
+        #     #  -------------------------------------------------------------------
+        #     __psi_prov = -cs.atan2(-__yl/2, __rc_prov[0]) - cs.pi  # (Real {φ_c})
+            
+        # pusher position
+        __p_pusher = cs.mtimes(__R[0:2,0:2], __rc)[0:2] + __x[0:2]  # ({Pusher Center} in {World})
+        #  -------------------------------------------------------------------
         self.psi_ = cs.Function('psi_', [__x,__p,__beta], [__psi_prov])  # compute (φ_c) from state variables, pusher coordinates and slider geometry
         self.psi = cs.Function('psi', [self.x,__p,self.beta], [self.psi_(self.x, __p, self.beta)])
         #  -------------------------------------------------------------------
@@ -115,9 +143,18 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         #  -------------------------------------------------------------------
         self.s = cs.Function('s', [self.x], [self.x[0:3]], ['x'], ['s'])  # compute (x, y, θ) from state variables
         #  -------------------------------------------------------------------
+        
         # dynamics
         __Jc = cs.SX(2,3)
+        # if self.face == '-x':
         __Jc[0,0] = 1; __Jc[1,1] = 1; __Jc[0,2] = -__yc; __Jc[1,2] = __xc;  # contact jacobian
+        # elif self.face == '+x':
+        #     __Jc[0,0] = -1; __Jc[1,1] = -1; __Jc[0,2] = __yc; __Jc[1,2] = -__xc;  # contact jacobian
+        # elif self.face == '-y':
+        #     __Jc[0,1] = -1; __Jc[1,0] = 1; __Jc[0,2] = __xc; __Jc[1,2] = __yc;  # contact jacobian
+        # else:
+        #     __Jc[0,1] = 1; __Jc[1,0] = -1; __Jc[0,2] = -__xc; __Jc[1,2] = -__yc;  # contact jacobian
+        
         self.RAJc = cs.Function('RAJc', [__x,__beta], [cs.mtimes(cs.mtimes(__R, __A), __Jc.T)], ['x', 'b'], ['f'])
         __f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(__R,__A),cs.mtimes(__Jc.T,__u[0:2])),__u[2]))
         #  -------------------------------------------------------------------
@@ -270,8 +307,8 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             self.Ng_u = 2
             # state and acton limits
             #  -------------------------------------------------------------------
-            self.lbx = [-cs.inf, -cs.inf, -cs.inf, 0.0]
-            self.ubx = [cs.inf, cs.inf, cs.inf, 0.0]
+            self.lbx = [-cs.inf, -cs.inf, -cs.inf, self.psi_lim]
+            self.ubx = [cs.inf, cs.inf, cs.inf, self.psi_lim]
             self.lbu = [0.0,  -self.f_lim]
             self.ubu = [self.f_lim, self.f_lim]
             #  -------------------------------------------------------------------

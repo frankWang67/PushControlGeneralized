@@ -55,6 +55,7 @@ def compute_nomState_from_nomTraj(x_data, y_data, dt):
     x2_nom = np.empty(ND)
     theta = 0.0
     for i in range(ND):
+        # align +x axis with the forwarding direction
         c, s = np.cos(theta), np.sin(theta)
         R = np.array(((c, s), (-s, c)))
         Dx_new = R.dot(np.array((Dx0_nom[i],Dx1_nom[i])))
