@@ -28,6 +28,15 @@ def generate_traj_circle(theta_i, theta_f, radious, N, N_MPC):
     y_nom -= y_nom[0]
     # return x_nom, y_nom
     return np.concatenate((x_nom, x_nom[1:N_MPC+1]), axis=0), np.concatenate((y_nom, y_nom[1:N_MPC+1]), axis=0)
+def generate_dubins_curve(theta_i, dtheta, center_x, center_y, radious, N, N_MPC):
+    s = np.linspace(theta_i, theta_i + dtheta, N)
+    x_nom = center_x+radious*np.cos(s)
+    y_nom = center_y+radious*np.sin(s)
+    # initial position at the origin
+    x_nom -= x_nom[0]
+    y_nom -= y_nom[0]
+    # return x_nom, y_nom
+    return np.concatenate((x_nom, x_nom[1:N_MPC+1]), axis=0), np.concatenate((y_nom, y_nom[1:N_MPC+1]), axis=0)
 def generate_traj_ellipse(theta_i, theta_f, radious_x, radious_y, N, N_MPC):
     s = np.linspace(theta_i, theta_f, N)
     x_nom = radious_x*np.cos(s)
