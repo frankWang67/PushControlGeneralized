@@ -343,6 +343,7 @@ class buildOptObj():
                 self.args.x0 += X_warmStart[:, i].elements()
                 self.args.x0 += [0.0]*self.dyn.Nu
             self.args.x0 += X_warmStart[:, -1].elements()
+            print(len(self.args.x0))
         else:
             for i in range(self.TH-1):
                 self.args.x0 += self.X_nom_val[:, i].elements()

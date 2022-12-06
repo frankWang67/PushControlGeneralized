@@ -44,8 +44,10 @@ N = int(T*freq)  # total number of iterations
 dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
         planning_config['dynamics'],
         planning_config['TO']['contactMode'],
-        planning_config['TO']['contactFace']
+        planning_config['TO']['contactFace'],
+        pusherAngleLim=0.
 )
+
 #  -------------------------------------------------------------------
 
 # Generate Nominal Trajectory
@@ -79,7 +81,7 @@ elif optObj.numObs==3:
     obsCentre = [[0.1, 0.1], [0.0, 0.3], [0.3, -0.125]]
     obsRadius = [0.05, 0.05, 0.05]
 #  ------------------------------------------------------------------
-x_init = [0., -0.12, -20.*(np.pi/180.), 0.]
+x_init = [0., 0., -20.*(np.pi/180.), 0.]
 # x_init = [0., 0., -20.*(np.pi/180.), -50.*(np.pi/180.)]
 # x_init = [0.38, 0.22, -70.*(np.pi/180.), 0.]
 beta = [
