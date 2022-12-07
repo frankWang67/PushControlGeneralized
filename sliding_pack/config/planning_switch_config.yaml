@@ -1,6 +1,5 @@
 #
-# Configuration file for tracking using sliding, face switching
-# and obstacle avoidance
+# Configuration file for tracking using sliding
 # 
 
 dynamics:
@@ -9,30 +8,28 @@ dynamics:
     pusherRadious: 0.01 #  [meter]
     pusherFricCoef: 0.2
     pusherForceLim:  0.3
-    # pusherAngleVelLim: 3.0
-    pusherAngleVelLim: 0.0
+    pusherAngleVelLim: 3.0
     Kz_max: 50.
     Kz_min: 50.
+    xFacePsiLimit: 0.9
+    # yFacePsiLimit: 0.405088
+    yFacePsiLimit: 0.52
 
 TO:
-    # contactMode: 'sticking'  # 'sticking', 'sliding_cc', or 'sliding_mi'
-    contactMode: 'sliding_mi'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
+    contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', or 'sliding_mi'
+    # contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
     # contactMode: 'sliding_mi'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
     # contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
+    contactFace: '-x'  # '+x', '-x', '+y', '-y'
     solverName: 'ipopt'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
     # solverName: 'knitro'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
     W_x: [1.0, 1.0, 0.01, 0.001]  # diagonal state weights
-    # W_u: [0., 0., 0., 0.]  # diagonal control weights
-    W_u: [0., 0., 0.]
-    gamma_u: [1, 1, 0.1]  # diagonal control variation weights in DDP's feasibility projection in the
-                          # forwarding process
+    W_u: [0., 0., 0., 0.]  # diagonal control weights
     K_goal: 1
     X_goal: [0.4, 0.2, 0.3, 0.]
-    numObs: 2
+    numObs: 0
     # X_goal: null
     linDynFlag: False
     codeGenFlag: False
     noPrintingFlag: False
     phases: null
-
-    converge_eps: 0.00000001

@@ -9,6 +9,7 @@
 
 #  import libraries
 #  -------------------------------------------------------------------
+from copy import deepcopy
 import sys
 import yaml
 import numpy as np
@@ -22,18 +23,19 @@ import matplotlib.transforms as transforms
 import sliding_pack
 #  -------------------------------------------------------------------
 from rrt_pack.utilities.data_proc import KinoPlanData
+from rrt_pack.utilities.planar_plotting import plot_obstacles
 #  -------------------------------------------------------------------
 
 # Get config files
 #  -------------------------------------------------------------------
-planning_config = sliding_pack.load_config('planning_config.yaml')
+planning_config = sliding_pack.load_config('planning_switch_config.yaml')
 planning_config['TO']['numObs'] = 0
 #  -------------------------------------------------------------------
 
 # Set Problem constants
 #  -------------------------------------------------------------------
 T = 2.5  # time of the simulation is seconds
-freq = 50  # number of increments per second
+freq = 50  # number of increments per second @TODO
 show_anim = True
 save_to_file = False
 #  -------------------------------------------------------------------
@@ -59,7 +61,7 @@ class SliderConvertor(object):
         self.path_len = None  # length of sub path
         self.push_pt = None  # contact point on the periphery
 
-        self.X_nom = np.zeros((0, 2))
+        self.X_nom = np.zeros((0, 4))
         self.X_opt = np.zeros((0, 4))
         self.X_con = np.zeros((0, 2))
         self.Face = []
@@ -70,7 +72,7 @@ class SliderConvertor(object):
         - path: COG trajectory
         - dubins: dubins curve parameters
         - path_len: length of the subpath
-        - contact: conatc point on the peripheral
+        - contact: contact point on the peripheral
         """
         self.path = data['path']
         self.dubins = data['dubins']
@@ -92,7 +94,7 @@ class SliderConvertor(object):
         """
         dt = 1.0/self.freq
         T = self.base_T * (self.path_len[i] / self.base_path_len)
-        N = int(T*freq)
+        N = max(10, int(T*self.freq))
 
         return dt, N
 
@@ -117,7 +119,10 @@ class SliderConvertor(object):
             return '-y', psi
 
     def solve(self):
+        # x_init: initial state of optimization problem
+        # x_init_nom: the first state of nominal states
         x_init = self.path[0, :].tolist()
+        x_init_nom = deepcopy(x_init)
 
         for i in range(len(self.path) - 1):
             dt, N = self.timing_decider(i)  # decide the time step and number of intervals
@@ -145,16 +150,24 @@ class SliderConvertor(object):
                 x_init = np.append(x_init, psi)
             else:
                 x_init[-1] = psi
+                
+            x_init_nom[2] = x_init_nom[2] + yaw_shift
+            if len(x_init_nom) == 3:
+                x_init_nom = np.append(x_init_nom, psi)
+            else:
+                x_init_nom[-1] = psi
+            
+            # import pdb; pdb.set_trace()
             
             X_goal = self.path[i + 1, :].tolist()
             X_goal[2] = X_goal[2] + yaw_shift
             X_goal = np.append(X_goal, psi)
-                        
             x0_nom, x1_nom = sliding_pack.traj.generate_dubins_curve(self.dubins[i, 0], self.dubins[i, 1], self.dubins[i, 2], self.dubins[i, 3], \
                                                                      self.dubins[i, 4], N, 0)
             X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
-            X_nom_val[:2, :] += x_init[:2]
-            X_nom_val[3, :] = psi
+            X_nom_val[:2, :] += x_init_nom[:2]
+            X_nom_val[2, :] = np.linspace(x_init_nom[2], x_init_nom[2] + self.dubins[i, 1], N)  # the yaw angle was recomputed by linear interpolation
+            X_nom_val[3, :] = psi  # the finger contact position was designated by planning data
             
             # if the yaw in nominal state and (init/goal) state are two far
             # bring them together (continuous)
@@ -190,8 +203,6 @@ class SliderConvertor(object):
                 pusher_coords = np.expand_dims(pusher_coords, axis=2)
             pusher_coords = np.matmul(rot_mat, pusher_coords).squeeze() + X_nom_val_opt[:2, :].T
             
-            # import pdb; pdb.set_trace()
-            
             # plt.figure()
             # plt.scatter(X_nom_val_opt.toarray()[0, :], X_nom_val_opt.toarray()[1, :])
             # plt.scatter(X_nom_val.toarray()[0, :], X_nom_val.toarray()[1, :])
@@ -199,9 +210,12 @@ class SliderConvertor(object):
             # plt.xlim([0.0, 0.5])
             # plt.ylim([0.0, 0.5])
             # plt.show()
+            # import pdb; pdb.set_trace()
             
             X_nom_val_opt[2, :] = X_nom_val_opt[2, :] - yaw_shift
-            self.X_nom = np.concatenate((self.X_nom, X_nom_val[:2, :].T), axis=0)
+            X_nom_val[2, :] = X_nom_val[2, :] - yaw_shift
+            
+            self.X_nom = np.concatenate((self.X_nom, X_nom_val.T if i == 0 else X_nom_val.T[1:, :]), axis=0)
             self.X_opt = np.concatenate((self.X_opt, X_nom_val_opt.T if i == 0 else X_nom_val_opt.T[1:, :]), axis=0)
             self.Face = self.Face + [face] * (N if i == 0 else (N - 1))
             
@@ -209,48 +223,77 @@ class SliderConvertor(object):
 
             # update x_init for next iteration
             x_init = X_nom_val_opt[:, -1].toarray().squeeze()
+            x_init_nom = X_nom_val[:, -1].toarray().squeeze()
 
         return self.X_nom, self.X_opt
 
-    def set_patches(self, ax, x_data):
+    def set_patches(self, ax, x_data, x_data_nom):
+        # size parameters
         default_beta = self.beta['x_face']
         Xl = default_beta[0]
         Yl = default_beta[1]
         R_pusher = default_beta[2]
+        
+        # set patch for real slider
         x0 = x_data[0, :]
         R0 = np.eye(3)
         d0 = R0.dot(np.array([-Xl/2., -Yl/2., 0]))
         self.slider = patches.Rectangle(
-                x0[0:2]+d0[0:2], Xl, Yl, angle=0.0)
+                x0[0:2]+d0[0:2], Xl, Yl, angle=0.0, color='#3682be', edgecolor=None, alpha=0.5)
         self.pusher = patches.Circle(
-                np.array(self.p(x0, default_beta)), radius=R_pusher, color='black')
+                np.array(self.p(x0, default_beta)), radius=R_pusher, color='black', alpha=0.5)
+        
+        # set patch for imaginary slider (nominal slider)
+        x0_nom = x_data_nom[0, :]
+        R0_nom = np.eye(3)
+        d0_nom = R0_nom.dot(np.array([-Xl/2., -Yl/2., 0]))
+        self.slider_nom = patches.Rectangle(
+                x0_nom[0:2]+d0_nom[0:2], Xl, Yl, angle=0.0, color='#45a776', edgecolor=None, alpha=0.5)
+        
+        # set slider trajectory
         self.path_past, = ax.plot(x0[0], x0[1], color='orange')
         self.path_future, = ax.plot(x0[0], x0[1],
                 color='orange', linestyle='dashed')
+        
+        # add patches
         ax.add_patch(self.slider)
         ax.add_patch(self.pusher)
+        ax.add_patch(self.slider_nom)
         self.path_past.set_linewidth(2)
 
-    def animate(self, i, ax, x_data, X_future=None):
+    def animate(self, i, ax, x_data, x_data_nom, X_future=None):
+        # size parameters
         default_beta = self.beta['x_face']
         Xl = default_beta[0]
         Yl = default_beta[1]
+        
+        # update real slider
         xi = x_data[i, :]
-        # distance between centre of square reference corner
-        Ri = np.array(self.R(xi))
+        Ri = np.array(self.R(xi))  # distance between centre of square reference corner
         di = Ri.dot(np.array([-Xl/2, -Yl/2, 0]))
-        # square reference corner
-        ci = xi[0:3] + di
-        # compute transformation with respect to rotation angle xi[2]
-        trans_ax = ax.transData
+        ci = xi[0:3] + di  # square reference corner
+        trans_ax = ax.transData  # compute transformation with respect to rotation angle xi[2]
         coords = trans_ax.transform(ci[0:2])
         trans_i = transforms.Affine2D().rotate_around(
                 coords[0], coords[1], xi[2])
         # Set changes
-        # import pdb; pdb.set_trace()
         self.slider.set_transform(trans_ax+trans_i)
         self.slider.set_xy([ci[0], ci[1]])
         self.pusher.set_center(self.X_con[i, :])
+        
+        # update imaginary slider (nominal slider)
+        xi_nom = x_data_nom[i, :]
+        Ri_nom = np.array(self.R(xi_nom))  # distance between centre of square reference corner
+        di_nom = Ri_nom.dot(np.array([-Xl/2, -Yl/2, 0]))
+        ci_nom = xi_nom[0:3] + di_nom  # square reference corner
+        trans_ax_nom = ax.transData  # compute transformation with respect to rotation angle xi[2]
+        coords_nom = trans_ax_nom.transform(ci_nom[0:2])
+        trans_i_nom = transforms.Affine2D().rotate_around(
+                coords_nom[0], coords_nom[1], xi_nom[2])
+        # Set changes
+        self.slider_nom.set_transform(trans_ax_nom+trans_i_nom)
+        self.slider_nom.set_xy([ci_nom[0], ci_nom[1]])
+        
         # Set path changes
         if self.path_past is not None:
             self.path_past.set_data(x_data[0:i, 0], x_data[0:i, 1])
@@ -341,9 +384,10 @@ if save_to_file:
                      float_format='%.5f')
     #  -------------------------------------------------------------------
 """
-plan_data = KinoPlanData(filename="rrt_planar_pushing_change1")
+plan_data = KinoPlanData(filename="rrt_planar_pushing_test")
+packed_data = plan_data.data_packer()
 
-converter_config = {'freq': 25, 'T': 2.5, 'path_len':0.4, 
+converter_config = {'freq': 50, 'T': 2.5, 'path_len':0.4, 
                     'beta': {'x_face': [planning_config['dynamics']['xLenght'],
                                         planning_config['dynamics']['yLenght'],
                                         planning_config['dynamics']['pusherRadious']],
@@ -352,7 +396,7 @@ converter_config = {'freq': 25, 'T': 2.5, 'path_len':0.4,
                                         planning_config['dynamics']['pusherRadious']]}}
 convertor = SliderConvertor(configDict=converter_config)
 convertor.planning_config_setter(planning_config)
-convertor.plan_data_parser(plan_data.data_packer())
+convertor.plan_data_parser(packed_data)
 x_nom, x_opt = convertor.solve()
 
 import pdb; pdb.set_trace()
@@ -364,7 +408,16 @@ if show_anim:
     #  ---------------------------------------------------------------
     fig, ax = sliding_pack.plots.plot_nominal_traj(
                 x_nom[:, 0], x_nom[:, 1], plot_title='')
+    # plot all the via points
+    plt.scatter(convertor.path[:, 0], convertor.path[:, 1], marker='x', color='aquamarine')
+    # plot obstacles
+    plot_obstacles(ax, packed_data['obstacle'])
     # add computed nominal trajectory
+    if type(x_nom) is not np.ndarray:
+        X_nom_val = np.array(x_nom)
+    else:
+        X_nom_val = x_nom
+    # add solved optimal nominal trajectory
     if type(x_opt) is not np.ndarray:
         X_nom_val_opt = np.array(x_opt)
     else:
@@ -379,19 +432,22 @@ if show_anim:
     # set window size
     fig.set_size_inches(8, 6, forward=True)
     # get slider and pusher patches
-    convertor.set_patches(ax, X_nom_val_opt)
+    # convertor.set_patches(ax, X_nom_val_opt)
+    convertor.set_patches(ax, X_nom_val_opt, X_nom_val)
     # call the animation
     ani = animation.FuncAnimation(
             fig,
             convertor.animate,
-            fargs=(ax, X_nom_val_opt),
+            # fargs=(ax, X_nom_val_opt),
+            fargs=(ax, X_nom_val_opt, X_nom_val),
             frames=len(X_nom_val_opt)-1,
-            interval=dt*1000*5,  # microseconds
+            interval=(1./convertor.freq)*1000*10,  # microseconds
             blit=True,
             repeat=False,
     )
     # to save animation, uncomment the line below:
-    # ani.save('planning_with_obstacles.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    # ani.save('planning_with_obstacles1.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    ani.save('planning_with_obstacles1.mp4', fps=25)
 #  -------------------------------------------------------------------
 
 # # Plot Optimization Results

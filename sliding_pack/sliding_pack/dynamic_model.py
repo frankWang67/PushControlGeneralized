@@ -49,9 +49,11 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             self.psi_lim = pusherAngleLim
         else:
             if self.face == '-x' or self.face == '+x':
-                self.psi_lim = 0.9
+                self.psi_lim = configDict['xFacePsiLimit']
             elif self.face == '-y' or self.face == '+y':
-                self.psi_lim = 0.405088
+                self.psi_lim = configDict['yFacePsiLimit']
+                # self.psi_lim = 0.405088
+                # self.psi_lim = 0.52
 
         # system constant variables
         self.Nx = 4  # number of state variables
