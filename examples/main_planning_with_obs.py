@@ -38,6 +38,7 @@ T = 2.5  # time of the simulation is seconds
 freq = 50  # number of increments per second @TODO
 show_anim = True
 save_to_file = False
+save_video = False
 #  -------------------------------------------------------------------
 # Computing Problem constants
 #  -------------------------------------------------------------------
@@ -384,7 +385,7 @@ if save_to_file:
                      float_format='%.5f')
     #  -------------------------------------------------------------------
 """
-plan_data = KinoPlanData(filename="rrt_planar_pushing_test")
+plan_data = KinoPlanData(filename="rrt_planar_pushing")
 packed_data = plan_data.data_packer()
 
 converter_config = {'freq': 50, 'T': 2.5, 'path_len':0.4, 
@@ -445,9 +446,11 @@ if show_anim:
             blit=True,
             repeat=False,
     )
+    if save_video:
+    #  ---------------------------------------------------------------
     # to save animation, uncomment the line below:
     # ani.save('planning_with_obstacles1.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
-    ani.save('planning_with_obstacles1.mp4', fps=25)
+        ani.save('planning_with_obstacles_short.mp4', fps=25)
 #  -------------------------------------------------------------------
 
 # # Plot Optimization Results
