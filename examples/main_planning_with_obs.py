@@ -38,7 +38,7 @@ T = 2.5  # time of the simulation is seconds
 freq = 50  # number of increments per second @TODO
 show_anim = True
 save_to_file = False
-save_video = False
+save_video = True
 #  -------------------------------------------------------------------
 # Computing Problem constants
 #  -------------------------------------------------------------------
@@ -204,14 +204,14 @@ class SliderConvertor(object):
                 pusher_coords = np.expand_dims(pusher_coords, axis=2)
             pusher_coords = np.matmul(rot_mat, pusher_coords).squeeze() + X_nom_val_opt[:2, :].T
             
-            # plt.figure()
-            # plt.scatter(X_nom_val_opt.toarray()[0, :], X_nom_val_opt.toarray()[1, :])
-            # plt.scatter(X_nom_val.toarray()[0, :], X_nom_val.toarray()[1, :])
-            # plt.gca().set_aspect("equal")
-            # plt.xlim([0.0, 0.5])
-            # plt.ylim([0.0, 0.5])
-            # plt.show()
-            # import pdb; pdb.set_trace()
+            plt.figure()
+            plt.scatter(X_nom_val_opt.toarray()[0, :], X_nom_val_opt.toarray()[1, :])
+            plt.scatter(X_nom_val.toarray()[0, :], X_nom_val.toarray()[1, :])
+            plt.gca().set_aspect("equal")
+            plt.xlim([0.0, 0.5])
+            plt.ylim([0.0, 0.5])
+            plt.show()
+            import pdb; pdb.set_trace()
             
             X_nom_val_opt[2, :] = X_nom_val_opt[2, :] - yaw_shift
             X_nom_val[2, :] = X_nom_val[2, :] - yaw_shift
@@ -408,7 +408,7 @@ plt.rcParams['figure.dpi'] = 150
 if show_anim:
     #  ---------------------------------------------------------------
     fig, ax = sliding_pack.plots.plot_nominal_traj(
-                x_nom[:, 0], x_nom[:, 1], plot_title='')
+                x_nom[:, 0], x_nom[:, 1], plot_title='', auto_xylim=False)
     # plot all the via points
     plt.scatter(convertor.path[:, 0], convertor.path[:, 1], marker='x', color='aquamarine')
     # plot obstacles
@@ -450,7 +450,7 @@ if show_anim:
     #  ---------------------------------------------------------------
     # to save animation, uncomment the line below:
     # ani.save('planning_with_obstacles1.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
-        ani.save('planning_with_obstacles_short.mp4', fps=25)
+        ani.save('./video/planning_with_obstacles_F_rrt_star.mp4', fps=25)
 #  -------------------------------------------------------------------
 
 # # Plot Optimization Results

@@ -61,15 +61,20 @@ def animate_square_slider_and_circle_pusher(i, slider, pusher, ax, pfunc, Rfunc,
 def plot_nominal_traj(x_data, y_data,
         margin_width=0.1,
         window_title='Nominal Trajectory',
-        plot_title='Pusher-Slider Motion Animation'):
+        plot_title='Pusher-Slider Motion Animation',
+        auto_xylim=True):
     fig, ax = plt.subplots()
     fig.canvas.set_window_title(window_title)
     ax.plot(x_data, y_data, color='red', linewidth=2.0, linestyle='dashed')
     # plot initial and final positions
     ax.plot(x_data[0], y_data[0], x_data[-1], y_data[-1], marker='o', color='red')
     # ax limits
-    ax.set_xlim((np.min(x_data)-margin_width,np.max(x_data)+margin_width))
-    ax.set_ylim((np.min(y_data)-margin_width,np.max(y_data)+margin_width))
+    if auto_xylim:  # decide the limits on x, y coordinates automatically
+        ax.set_xlim((np.min(x_data)-margin_width,np.max(x_data)+margin_width))
+        ax.set_ylim((np.min(y_data)-margin_width,np.max(y_data)+margin_width))
+    else:
+        ax.set_xlim([0.0, 0.5])
+        ax.set_ylim([0.0, 0.5])
     # ax settings
     ax.set_autoscale_on(False)
     ax.grid();
