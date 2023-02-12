@@ -3,6 +3,7 @@ import numpy as np
 import os
 import sys
 from scipy.interpolate import interp1d
+from autolab_core import RigidTransform
 
 
 class HiddenPrints:
@@ -75,3 +76,6 @@ def interpolate_path(path, N):
     f_interp = interp1d(np.linspace(0., 1., path.shape[0]), path, axis=0)
     ret = f_interp(tau)
     return ret
+
+def make_rigid_transform(translation, rotation, from_frame):
+    return RigidTransform(translation=translation, rotation=rotation, from_frame=from_frame)

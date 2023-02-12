@@ -16,14 +16,188 @@ import pandas as pd
 import casadi as cs
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+from scipy.spatial.transform import Rotation as R
+from autolab_core import RigidTransform
+from utils import *
+from utils.utils import *
+#  -------------------------------------------------------------------
+from frankapy import FrankaArm, SensorDataMessageType
+from frankapy import FrankaConstants as FC
+from frankapy.proto_utils import sensor_proto2ros_msg, make_sensor_group_msg
+from frankapy.proto import PosePositionSensorMessage, ShouldTerminateSensorMessage, CartesianImpedanceSensorMessage
+from franka_interface_msgs.msg import SensorDataGroup
+#  -------------------------------------------------------------------
+# ----- use tf2 in python3 -----
+sys.path = ['/home/roboticslab/jyp/catkin_ws/devel/lib/python3/dist-packages'] + sys.path
+import rospy
+import tf2_ros
 #  -------------------------------------------------------------------
 import sliding_pack
 #  -------------------------------------------------------------------
 
 # Get config files
 #  -------------------------------------------------------------------
-tracking_config = sliding_pack.load_config('tracking_config.yaml')
-planning_config = sliding_pack.load_config('planning_switch_config.yaml')
+tracking_config = sliding_pack.load_config('tracking_robot.yaml')
+planning_config = sliding_pack.load_config('planning_robot.yaml')
+#  -------------------------------------------------------------------
+
+# Initialize coordinates
+#  -------------------------------------------------------------------
+x_axis_in_world = np.array([np.sqrt(2)/2., -np.sqrt(2)/2., 0.])
+y_axis_in_world = np.array([-np.sqrt(2)/2., -np.sqrt(2)/2., 0.])
+z_axis_in_world = np.array([0., 0., -1.])
+DEFAULT_ROTATION_MATRIX = np.c_[x_axis_in_world, \
+                                y_axis_in_world, \
+                                z_axis_in_world]
+#  -------------------------------------------------------------------
+
+# Panda ROS control
+#  -------------------------------------------------------------------
+def ged_real_end_effector_xy_abs(fa:FrankaArm):
+    pose = fa.get_pose()
+    return pose.translation[:2]
+
+def get_desired_end_effector_xy_abs(slider_pose, rel_coord):
+    """
+    :param slider_pose: the slider pose (x, y, theta)
+    :param rel_pose: the relative pose (x_s, y_s) in the slider's local frama
+    """
+    rel_x, rel_y = rel_coord
+    sx, sy, stheta = slider_pose
+
+    rot_mat = rotation_matrix(stheta)
+    abs_coord = np.array([sx, sy]) + rot_mat @ np.array([rel_x, rel_y])
+
+    return abs_coord
+
+def panda_move_to_pose(fa:FrankaArm, trans, trans_pre=None):
+    rospy.loginfo('Moving the pusher to new goal!')
+
+    pose_cur = fa.get_pose()
+    tool_frame_name = pose_cur.from_frame
+    xyz_cur = pose_cur.translation
+
+    xyz_step1 = xyz_cur + np.array([0., 0., 0.1])
+    rotmat_step1 = DEFAULT_ROTATION_MATRIX
+    trans_step1 = make_rigid_transform(xyz_step1, rotmat_step1, tool_frame_name)
+    fa.goto_pose(trans_step1, duration=3)
+
+    xyz_goal = trans
+    xyz_goal_pre = trans_pre
+
+    if trans_pre is not None:
+        xyz_step2 = xyz_goal_pre + np.array([0., 0., 0.1])
+        rotmat_step2 = DEFAULT_ROTATION_MATRIX
+        trans_step2 = make_rigid_transform(xyz_step2, rotmat_step2, tool_frame_name)
+        fa.goto_pose(trans_step2, duration=5)
+    else:
+        xyz_step2 = xyz_goal + np.array([0., 0., 0.1])
+        rotmat_step2 = DEFAULT_ROTATION_MATRIX
+        trans_step2 = make_rigid_transform(xyz_step2, rotmat_step2, tool_frame_name)
+        fa.goto_pose(trans_step2, duration=5)
+
+    xyz_step3 = xyz_goal.copy()
+    rotmat_step3 = DEFAULT_ROTATION_MATRIX
+    trans_step3 = make_rigid_transform(xyz_step3, rotmat_step3, tool_frame_name)
+    fa.goto_pose(trans_step3, duration=3)
+
+    rospy.loginfo('Finished moving the pusher to new goal!')
+
+    return trans_step3
+
+def get_rel_coords_on_slider(psic, beta, contact_face, return_pre_pos):
+    """
+    :param return_pre_pose: if true, return the pre-contact pos
+    """
+    assert contact_face == 'back'
+    xl, yl = beta[:2]
+    if contact_face == 'back':
+        rel_x = -0.5*xl
+        rel_y = rel_x * np.tan(psic)
+        rel_coords = np.array([rel_x, rel_y])
+        if return_pre_pos:
+            pre_rel_x = rel_x - 0.01
+            pre_rel_y = rel_y
+            pre_rel_coords = np.array([pre_rel_x, pre_rel_y])
+
+    if return_pre_pos:
+        return rel_coords, pre_rel_coords
+    else:
+        return rel_coords
+
+class tfHandler(object):
+    def __init__(self, base_frame_name, slider_frame_name) -> None:
+        self.tfBuffer = tf2_ros.Buffer()
+        self.listener = tf2_ros.TransformListener(self.tfBuffer)
+
+        self.slider_frame_name = slider_frame_name
+        self.base_frame_name = base_frame_name
+
+    def get_transform(self, target_frame, source_frame):
+        rate = rospy.Rate(30)
+        while not rospy.is_shutdown():
+            try:
+                trans = self.tfBuffer.lookup_transform(target_frame, source_frame, 0)
+            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+                rospy.logwarn('The transform from {0} to {1} does not exist!'.format(source_frame, target_frame))
+                rate.sleep()
+                continue
+        return trans
+
+    def get_slider_position_and_orientation(self):
+        """
+        :return: slider_pos (x, y, z)
+        :return: slider_ori theta
+        """
+        trans = self.get_transform(self.slider_frame_name, self.base_frame_name)
+        slider_pos = np.array(trans.transform.translation)
+        slider_quat = np.array(trans.transform.rotation)
+
+        slider_rotmat = R.from_quat(slider_quat).as_matrix()
+        slider_x_axis_in_world = slider_rotmat[:, 0]
+        slider_ori = np.arctan2(slider_x_axis_in_world[1], slider_x_axis_in_world[0])
+
+        return slider_pos, slider_ori
+
+class FrankaPyInterface(object):
+    def __init__(self, fa:FrankaArm) -> None:
+        self.fa = fa
+        self.pub = rospy.Publisher(FC.DEFAULT_SENSOR_PUBLISHER_TOPIC, SensorDataGroup, queue_size=1000)
+    
+    def pose_control_start(self, pose0):
+        fa.goto_pose(pose0, duration=100, dynamic=True, buffer_time=10,
+            cartesian_impedances=FC.DEFAULT_TRANSLATIONAL_STIFFNESSES + FC.DEFAULT_ROTATIONAL_STIFFNESSES
+        )
+        self.init_time = rospy.Time.now().to_time()
+
+    def pose_control_goto(self, pose):
+        timestamp = rospy.Time.now().to_time() - self.init_time
+        traj_gen_proto_msg = PosePositionSensorMessage(
+            id=i, timestamp=timestamp, 
+            position=pose.translation, quaternion=pose.quaternion
+        )
+        fb_ctrlr_proto = CartesianImpedanceSensorMessage(
+            id=i, timestamp=timestamp,
+            translational_stiffnesses=FC.DEFAULT_TRANSLATIONAL_STIFFNESSES,
+            rotational_stiffnesses=FC.DEFAULT_ROTATIONAL_STIFFNESSES
+        )
+        ros_msg = make_sensor_group_msg(
+            trajectory_generator_sensor_msg=sensor_proto2ros_msg(
+                traj_gen_proto_msg, SensorDataMessageType.POSE_POSITION),
+            feedback_controller_sensor_msg=sensor_proto2ros_msg(
+                fb_ctrlr_proto, SensorDataMessageType.CARTESIAN_IMPEDANCE)
+            )
+
+        self.pub.publish(ros_msg)
+
+    def pose_control_terminite(self):
+        term_proto_msg = ShouldTerminateSensorMessage(timestamp=rospy.Time.now().to_time() - self.init_time, should_terminate=True)
+        ros_msg = make_sensor_group_msg(
+            termination_handler_sensor_msg=sensor_proto2ros_msg(
+                term_proto_msg, SensorDataMessageType.SHOULD_TERMINATE)
+            )
+        self.pub.publish(ros_msg)
+
 #  -------------------------------------------------------------------
 
 # Set Problem constants
@@ -44,6 +218,22 @@ N = int(T*freq)  # total number of iterations
 Nidx = int(N)
 idxDist = 5.*freq
 # Nidx = 10
+#  -------------------------------------------------------------------
+contact_point_depth = 0.04
+base_frame_name = ''
+slider_frame_name = ''
+#  -------------------------------------------------------------------
+
+# initialize TF2_ROS interface
+#  -------------------------------------------------------------------
+fa = FrankaArm(with_gripper=False)
+tf_handler = tfHandler(base_frame_name=base_frame_name,
+                       slider_frame_name=slider_frame_name)
+#  -------------------------------------------------------------------
+
+# initialize Franka control
+#  -------------------------------------------------------------------
+franka_ctrl = FrankaPyInterface(fa)
 #  -------------------------------------------------------------------
 
 # define system dynamics
@@ -67,7 +257,6 @@ x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.3, N, N_MPC)
 # stack state and derivative of state
 X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  ------------------------------------------------------------------
-
 
 # Compute nominal actions for sticking contact
 #  ------------------------------------------------------------------
@@ -102,6 +291,22 @@ optObj = sliding_pack.to.buildOptObj(
         dyn, N_MPC, tracking_config['TO'],
         X_nom_val, None, dt=dt,
 )
+#  -------------------------------------------------------------------
+
+# control panda to start position
+#  -------------------------------------------------------------------
+slider_abs_pos, slider_abs_ori = tf_handler.get_slider_position_and_orientation()
+pusher_psic_init = x_init_val[3]
+x_rel_init, x_pre_rel_init = get_rel_coords_on_slider(pusher_psic_init, beta, contact_face='back', return_pre_pos=True)
+panda_ee_xy_desired = get_desired_end_effector_xy_abs(np.append(slider_abs_pos[:2], slider_abs_ori), x_rel_init)
+panda_ee_z_desired = slider_abs_pos[2] - contact_point_depth
+panda_ee_xy_pre_desired = get_desired_end_effector_xy_abs(np.append(slider_abs_pos[:2], slider_abs_ori), x_pre_rel_init)
+panda_ee_z_pre_desired = slider_abs_pos[2] - contact_point_depth
+pose_init = panda_move_to_pose(fa, np.append(panda_ee_xy_desired, panda_ee_z_desired), np.append(panda_ee_xy_pre_desired, panda_ee_z_pre_desired))
+
+rospy.loginfo('Panda moved to slider!')
+
+franka_ctrl.pose_control_start(pose_init)
 #  -------------------------------------------------------------------
 
 # Initialize variables for plotting
@@ -159,6 +364,9 @@ for idx in range(Nidx-1):
     u0 = u_opt[:, 0].elements()
     # x0 = x_opt[:,1].elements()
     x0 = (x0 + dyn.f(x0, u0, beta)*dt).elements()
+    # ---- control Franka ----
+    panda_ee_xy = ged_real_end_effector_xy_abs(fa)
+    f0 = np.array([u0[0], u0[1]-u0[2]])
     # ---- store values for plotting ----
     comp_time[idx] = t_opt
     success[idx] = resultFlag
