@@ -12,7 +12,7 @@
 import sys
 import yaml
 import numpy as np
-import pandas as pd
+# import pandas as pd
 import casadi as cs
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -33,7 +33,14 @@ freq = 25  # number of increments per second
 # N_MPC = 12 # time horizon for the MPC controller
 N_MPC = 25  # time horizon for the MPC controller
 # x_init_val = [-0.03, 0.03, 30*(np.pi/180.), 0]
-x_init_val = [0., 0., 45*(np.pi/180.), 0]
+
+## x_traj from real robot exp
+x_traj = np.load('./data/x_traj.npy')
+
+# x_init_val = [0., 0., 0.02*np.pi, 0]
+# x_init_val = [0.4241445, 0.01386, -0.0365, 0.]
+x_init_val = x_traj[:, 0].tolist()
+
 show_anim = True
 save_to_file = False
 #  -------------------------------------------------------------------
@@ -50,7 +57,8 @@ idxDist = 5.*freq
 #  -------------------------------------------------------------------
 dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
         tracking_config['dynamics'],
-        tracking_config['TO']['contactMode']
+        tracking_config['TO']['contactMode'],
+        pusherAngleLim=tracking_config['dynamics']['xFacePsiLimit']
 )
 #  -------------------------------------------------------------------
 
@@ -58,25 +66,28 @@ dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
 #  -------------------------------------------------------------------
 X_goal = tracking_config['TO']['X_goal']
 # print(X_goal)
+x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.2, 0.0, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_ellipse(-np.pi/2, 3*np.pi/2, 0.2, 0.1, N, N_MPC)
-x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.3, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.3, N, N_MPC)
+## offset nominal traj
+x0_nom, x1_nom = x0_nom+x_init_val[0], x1_nom+x_init_val[1]
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  ------------------------------------------------------------------
 
-
 # Compute nominal actions for sticking contact
 #  ------------------------------------------------------------------
 dynNom = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
         planning_config['dynamics'],
-        planning_config['TO']['contactMode']
+        planning_config['TO']['contactMode'],
+        pusherAngleLim=tracking_config['dynamics']['xFacePsiLimit']
 )
 optObjNom = sliding_pack.to.buildOptObj(
-        dynNom, N+N_MPC, planning_config['TO'], dt=dt)
+        dynNom, N+N_MPC, planning_config['TO'], dt=dt, max_iter=100)
 beta = [
     planning_config['dynamics']['xLenght'],
     planning_config['dynamics']['yLenght'],
@@ -100,7 +111,7 @@ X_nom_comp = f_rollout([0., 0., 0., 0.], U_nom_val_opt)
 #  -------------------------------------------------------------------
 optObj = sliding_pack.to.buildOptObj(
         dyn, N_MPC, tracking_config['TO'],
-        X_nom_val, None, dt=dt,
+        X_nom_val, None, dt=dt, max_iter=None
 )
 #  -------------------------------------------------------------------
 
@@ -142,6 +153,8 @@ elif optObj.numObs==1:
 #  -------------------------------------------------------------------
 x0 = x_init_val
 for idx in range(Nidx-1):
+    if idx >= 100:
+        break
     print('-------------------------')
     print(idx)
     # if idx == idxDist:
@@ -150,10 +163,12 @@ for idx in range(Nidx-1):
     #     x0[1] += -0.03
     #     x0[2] += 30.*(np.pi/180.)
     # ---- solve problem ----
+    x0 = x_traj[:, idx].tolist()
     resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(
             idx, x0, beta,
             S_goal_val=S_goal_val,
             obsCentre=obsCentre, obsRadius=obsRadius)
+    import pdb; pdb.set_trace()
     print(f_opt)
     # ---- update initial state (simulation) ----
     u0 = u_opt[:, 0].elements()
@@ -183,41 +198,41 @@ p_map = p_new.map(N)
 X_pusher_opt = p_map(X_plot)
 #  -------------------------------------------------------------------
 
-if save_to_file:
-    #  Save data to file using pandas
-    #  -------------------------------------------------------------------
-    df_state = pd.DataFrame(
-                    np.concatenate((
-                        np.array(X_nom_val[:, :Nidx]).transpose(),
-                        np.array(X_plot).transpose(),
-                        np.array(X_pusher_opt).transpose()
-                        ), axis=1),
-                    columns=['x_nom', 'y_nom', 'theta_nom', 'psi_nom',
-                             'x_opt', 'y_opt', 'theta_opt', 'psi_opt',
-                             'x_pusher', 'y_pusher'])
-    df_state.index.name = 'idx'
-    df_state.to_csv('tracking_circle_cc_state.csv',
-                    float_format='%.5f')
-    time = np.linspace(0., T, Nidx-1)
-    print('********************')
-    print(U_plot.transpose().shape)
-    print(cost_plot.shape)
-    print(comp_time.shape)
-    print(time.shape)
-    print(time[:, None].shape)
-    df_action = pd.DataFrame(
-                    np.concatenate((
-                        U_plot.transpose(),
-                        time[:, None],
-                        cost_plot,
-                        comp_time
-                        ), axis=1),
-                    columns=['u0', 'u1', 'u3', 'u4',
-                    # columns=['u0', 'u1', 'u3',
-                             'time', 'cost', 'comp_time'])
-    df_action.index.name = 'idx'
-    df_action.to_csv('tracking_circle_cc_action.csv',
-                     float_format='%.5f')
+# if save_to_file:
+#     #  Save data to file using pandas
+#     #  -------------------------------------------------------------------
+#     df_state = pd.DataFrame(
+#                     np.concatenate((
+#                         np.array(X_nom_val[:, :Nidx]).transpose(),
+#                         np.array(X_plot).transpose(),
+#                         np.array(X_pusher_opt).transpose()
+#                         ), axis=1),
+#                     columns=['x_nom', 'y_nom', 'theta_nom', 'psi_nom',
+#                              'x_opt', 'y_opt', 'theta_opt', 'psi_opt',
+#                              'x_pusher', 'y_pusher'])
+#     df_state.index.name = 'idx'
+#     df_state.to_csv('tracking_circle_cc_state.csv',
+#                     float_format='%.5f')
+#     time = np.linspace(0., T, Nidx-1)
+#     print('********************')
+#     print(U_plot.transpose().shape)
+#     print(cost_plot.shape)
+#     print(comp_time.shape)
+#     print(time.shape)
+#     print(time[:, None].shape)
+#     df_action = pd.DataFrame(
+#                     np.concatenate((
+#                         U_plot.transpose(),
+#                         time[:, None],
+#                         cost_plot,
+#                         comp_time
+#                         ), axis=1),
+#                     columns=['u0', 'u1', 'u3', 'u4',
+#                     # columns=['u0', 'u1', 'u3',
+#                              'time', 'cost', 'comp_time'])
+#     df_action.index.name = 'idx'
+#     df_action.to_csv('tracking_circle_cc_action.csv',
+#                      float_format='%.5f')
     #  -------------------------------------------------------------------
 
 # Animation
@@ -254,7 +269,7 @@ if show_anim:
             repeat=False,
     )
     # to save animation, uncomment the line below:
-    # ani.save('MPC_MPCC_eight.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    ani.save('./videos/MPC_MPCC_line.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
@@ -320,6 +335,8 @@ for i in range(dyn.Nu):
     axs[2, i].plot(t_Nu, U_nom_val_opt[i, 0:N-1].T, color='blue',
                    linestyle='--', label='plan')
     axs[2, i].plot(t_idx_u, U_plot[i, :], color='orange', label='mpc')
+    if i == 1:
+        axs[2, i].plot(t_idx_u, U_plot[2, :] - U_plot[3, :], color='green', label='dpsic')
     handles, labels = axs[2, i].get_legend_handles_labels()
     axs[2, i].legend(handles, labels)
     axs[2, i].set_xlabel('time [s]')

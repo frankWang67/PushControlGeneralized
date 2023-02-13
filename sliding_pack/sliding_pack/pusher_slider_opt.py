@@ -19,7 +19,7 @@ import sliding_pack
 class buildOptObj():
 
     def __init__(self, dyn_class, timeHorizon, configDict, X_nom_val=None,
-                 U_nom_val=None, dt=0.1, useGoalFlag=False):
+                 U_nom_val=None, dt=0.1, useGoalFlag=False, max_iter=None):
 
         # init parameters
         self.dyn = dyn_class
@@ -264,6 +264,8 @@ class buildOptObj():
         prog_name = 'MPC' + '_TH' + str(self.TH) + '_' + self.solver_name + '_codeGen_' + str(self.code_gen)
         if self.solver_name == 'ipopt':
             if self.no_printing: opts_dict['ipopt.print_level'] = 0
+            if max_iter is not None:
+                opts_dict['ipopt.max_iter'] = max_iter
             opts_dict['ipopt.jac_d_constant'] = 'yes'
             opts_dict['ipopt.warm_start_init_point'] = 'yes'
             opts_dict['ipopt.hessian_constant'] = 'yes'

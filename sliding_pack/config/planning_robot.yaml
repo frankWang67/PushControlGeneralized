@@ -3,12 +3,12 @@
 # 
 
 dynamics:
-    xLenght: 0.07
-    yLenght: 0.12
-    pusherRadious: 0.01 #  [meter]
-    pusherFricCoef: 0.2
+    xLenght: 0.091 #  [meter]
+    yLenght: 0.144 #  [meter]
+    pusherRadious: 0.015 #  [meter]
+    pusherFricCoef: 0.3
     pusherForceLim:  0.3
-    pusherAngleVelLim: 3.0
+    pusherAngleVelLim: 1.5
     Kz_max: 50.
     Kz_min: 50.
     xFacePsiLimit: 0.9

@@ -1,0 +1,2 @@
+- setup-file:
+    local-name: /home/roboticslab/jyp/pusher_slider/catkin_ws/devel/setup.sh
