@@ -20,7 +20,7 @@ import sliding_pack
 
 class Sys_sq_slider_quasi_static_ellip_lim_surf():
 
-    def __init__(self, configDict, contactMode='sticking', contactFace='-x', pusherAngleLim=0.):
+    def __init__(self, configDict, contactMode='sticking', contactFace='-x', pusherAngleLim=0., limit_surf_gain=1.):
 
         # init parameters
         self.mode = contactMode
@@ -57,6 +57,8 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         """
                 # self.psi_lim = 0.405088
                 # self.psi_lim = 0.52
+
+        self.limit_surf_gain = limit_surf_gain
 
         # system constant variables
         self.Nx = 4  # number of state variables
@@ -103,6 +105,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         self.c = cs.Function('c', [__x, __beta], [__c], ['x', 'b'], ['c'])
         __A = cs.SX.sym('__A', cs.Sparsity.diag(3))
         __A[0,0] = __A[1,1] = 1.; __A[2,2] = 1./(__c**2)
+        __A = self.limit_surf_gain * __A
         self.A = cs.Function('A', [__beta], [__A], ['b'], ['A'])
         __ctheta = cs.cos(__theta)
         __stheta = cs.sin(__theta)
@@ -338,7 +341,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
                 np.array(self.p(x0, beta)), radius=R_pusher, color='black')
         self.path_past, = ax.plot(x0[0], x0[1], color='orange')
         self.path_future, = ax.plot(x0[0], x0[1],
-                color='orange', linestyle='dashed')
+                color='blue', linestyle='dashed')
         ax.add_patch(self.slider)
         ax.add_patch(self.pusher)
         self.path_past.set_linewidth(2)

@@ -29,15 +29,17 @@ planning_config = sliding_pack.load_config('planning_switch_config.yaml')
 # Set Problem constants
 #  -------------------------------------------------------------------
 T = 10  # time of the simulation is seconds
-freq = 25  # number of increments per second
+freq = 15  # number of increments per second
 # N_MPC = 12 # time horizon for the MPC controller
 N_MPC = 25  # time horizon for the MPC controller
 # x_init_val = [-0.03, 0.03, 30*(np.pi/180.), 0]
 
 ## x_traj from real robot exp
 x_traj = np.load('./data/x_traj.npy')
+u_traj = np.load('./data/u_traj.npy')
 
-# x_init_val = [0., 0., 0.02*np.pi, 0]
+
+# x_init_val = [0., 0.03, 0.02*np.pi, 0]
 # x_init_val = [0.4241445, 0.01386, -0.0365, 0.]
 x_init_val = x_traj[:, 0].tolist()
 
@@ -111,7 +113,7 @@ X_nom_comp = f_rollout([0., 0., 0., 0.], U_nom_val_opt)
 #  -------------------------------------------------------------------
 optObj = sliding_pack.to.buildOptObj(
         dyn, N_MPC, tracking_config['TO'],
-        X_nom_val, None, dt=dt, max_iter=None
+        X_nom_val, None, dt=dt, max_iter=60
 )
 #  -------------------------------------------------------------------
 
@@ -153,8 +155,8 @@ elif optObj.numObs==1:
 #  -------------------------------------------------------------------
 x0 = x_init_val
 for idx in range(Nidx-1):
-    if idx >= 100:
-        break
+    # if idx >= 100:
+    #     break
     print('-------------------------')
     print(idx)
     # if idx == idxDist:
@@ -168,8 +170,8 @@ for idx in range(Nidx-1):
             idx, x0, beta,
             S_goal_val=S_goal_val,
             obsCentre=obsCentre, obsRadius=obsRadius)
-    import pdb; pdb.set_trace()
     print(f_opt)
+    import pdb; pdb.set_trace()
     # ---- update initial state (simulation) ----
     u0 = u_opt[:, 0].elements()
     # x0 = x_opt[:,1].elements()
