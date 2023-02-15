@@ -39,9 +39,10 @@ x_traj = np.load('./data/x_traj.npy')
 u_traj = np.load('./data/u_traj.npy')
 
 
+x_init_val = [0., 0., 0.2*np.pi, 0.]
 # x_init_val = [0., 0.03, 0.02*np.pi, 0]
 # x_init_val = [0.4241445, 0.01386, -0.0365, 0.]
-x_init_val = x_traj[:, 0].tolist()
+# x_init_val = x_traj[:, 0].tolist()
 
 show_anim = True
 save_to_file = False
@@ -68,14 +69,15 @@ dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
 #  -------------------------------------------------------------------
 X_goal = tracking_config['TO']['X_goal']
 # print(X_goal)
-x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.2, 0.0, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.2, 0.0, N, N_MPC)
+x0_nom, x1_nom = sliding_pack.traj.generate_traj_sine(0.3, 0.0, 0.05, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_ellipse(-np.pi/2, 3*np.pi/2, 0.2, 0.1, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.3, N, N_MPC)
 ## offset nominal traj
-x0_nom, x1_nom = x0_nom+x_init_val[0], x1_nom+x_init_val[1]
+# x0_nom, x1_nom = x0_nom+x_init_val[0], x1_nom+x_init_val[1]
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -165,13 +167,13 @@ for idx in range(Nidx-1):
     #     x0[1] += -0.03
     #     x0[2] += 30.*(np.pi/180.)
     # ---- solve problem ----
-    x0 = x_traj[:, idx].tolist()
+    # x0 = x_traj[:, idx].tolist()
     resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(
             idx, x0, beta,
             S_goal_val=S_goal_val,
             obsCentre=obsCentre, obsRadius=obsRadius)
     print(f_opt)
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     # ---- update initial state (simulation) ----
     u0 = u_opt[:, 0].elements()
     # x0 = x_opt[:,1].elements()

@@ -7,7 +7,7 @@ dynamics:
     # yLenght: 0.144 #  [meter]
     xLenght: 0.08 #  [meter]
     yLenght: 0.15 #  [meter]
-    pusherRadious: 0.0075 #  [meter]
+    pusherRadious: 0.009 #  [meter]
     pusherFricCoef: 0.3
     pusherForceLim:  0.3
     pusherAngleVelLim: 3.0

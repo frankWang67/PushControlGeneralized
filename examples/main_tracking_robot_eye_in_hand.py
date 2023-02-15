@@ -32,6 +32,8 @@ from franka_interface_msgs.msg import SensorDataGroup
 sys.path = ['/home/roboticslab/jyp/catkin_ws/devel/lib/python3/dist-packages'] + sys.path
 import rospy
 import tf2_ros
+from std_srvs.srv import Trigger
+from aruco_ros.srv import AskForMarkerCenter
 #  -------------------------------------------------------------------
 import sliding_pack
 #  -------------------------------------------------------------------
@@ -41,6 +43,11 @@ from geometry_msgs.msg import Twist
 #  -------------------------------------------------------------------
 tracking_config = sliding_pack.load_config('tracking_robot.yaml')
 planning_config = sliding_pack.load_config('planning_robot.yaml')
+beta = [
+    planning_config['dynamics']['xLenght'],
+    planning_config['dynamics']['yLenght'],
+    planning_config['dynamics']['pusherRadious']
+]
 #  -------------------------------------------------------------------
 
 # Initialize coordinates
@@ -51,10 +58,19 @@ z_axis_in_world = np.array([0., 0., -1.])
 DEFAULT_ROTATION_MATRIX = np.c_[x_axis_in_world, \
                                 y_axis_in_world, \
                                 z_axis_in_world]
+GOD_VIEW_TRANSLATION = np.array([0.50686447, -0.04996442, 0.53985807])
 #  -------------------------------------------------------------------
 
 # Panda ROS control
 #  -------------------------------------------------------------------
+def check_slider_marker_in_view():
+    res = ask_for_marker1_in_view()
+    return res.success
+
+def acquire_slider_marker_center_in_image():
+    res = ask_for_marker1_center()
+    return np.array([res.marker_pose.x, res.marker_pose.y])
+
 def ged_real_end_effector_xy_abs(fa:FrankaArm):
     pose = fa.get_pose()
     return pose.translation[:2]
@@ -82,7 +98,7 @@ def panda_move_to_pose(fa:FrankaArm, trans, trans_pre=None):
     xyz_step1 = xyz_cur + np.array([0., 0., 0.1])
     rotmat_step1 = DEFAULT_ROTATION_MATRIX
     trans_step1 = make_rigid_transform(xyz_step1, rotmat_step1, tool_frame_name)
-    fa.goto_pose(trans_step1, duration=3)
+    fa.goto_pose(trans_step1, duration=3, ignore_virtual_walls=True)
 
     xyz_goal = trans
     xyz_goal_pre = trans_pre
@@ -91,17 +107,17 @@ def panda_move_to_pose(fa:FrankaArm, trans, trans_pre=None):
         xyz_step2 = xyz_goal_pre + np.array([0., 0., 0.1])
         rotmat_step2 = DEFAULT_ROTATION_MATRIX
         trans_step2 = make_rigid_transform(xyz_step2, rotmat_step2, tool_frame_name)
-        fa.goto_pose(trans_step2, duration=5)
+        fa.goto_pose(trans_step2, duration=5, ignore_virtual_walls=True)
     else:
         xyz_step2 = xyz_goal + np.array([0., 0., 0.1])
         rotmat_step2 = DEFAULT_ROTATION_MATRIX
         trans_step2 = make_rigid_transform(xyz_step2, rotmat_step2, tool_frame_name)
-        fa.goto_pose(trans_step2, duration=5)
+        fa.goto_pose(trans_step2, duration=5, ignore_virtual_walls=True)
 
     xyz_step3 = xyz_goal.copy()
     rotmat_step3 = DEFAULT_ROTATION_MATRIX
     trans_step3 = make_rigid_transform(xyz_step3, rotmat_step3, tool_frame_name)
-    fa.goto_pose(trans_step3, duration=3)
+    fa.goto_pose(trans_step3, duration=3, ignore_virtual_walls=True)
 
     rospy.loginfo('Finished moving the pusher to new goal!')
 
@@ -111,16 +127,41 @@ def get_rel_coords_on_slider(psic, beta, contact_face, return_pre_pos):
     """
     :param return_pre_pose: if true, return the pre-contact pos
     """
-    assert contact_face == 'back'
-    xl, yl = beta[:2]
+    xl, yl, rl = beta
     if contact_face == 'back':
-        rel_x = -0.5*xl
+        rel_x = -0.5*xl - rl
         rel_y = rel_x * np.tan(psic)
         rel_coords = np.array([rel_x, rel_y])
         if return_pre_pos:
             pre_rel_x = rel_x - 0.01
             pre_rel_y = rel_y
             pre_rel_coords = np.array([pre_rel_x, pre_rel_y])
+    elif contact_face == 'front':
+        rel_x = 0.5*xl + rl
+        rel_y = rel_x * np.tan(psic)
+        rel_coords = np.array([rel_x, rel_y])
+        if return_pre_pos:
+            pre_rel_x = rel_x + 0.01
+            pre_rel_y = rel_y
+            pre_rel_coords = np.array([pre_rel_x, pre_rel_y])
+    elif contact_face == 'left':
+        rel_y = 0.5*yl + rl
+        rel_x = -rel_y * np.tan(psic)
+        rel_coords = np.array([rel_x, rel_y])
+        if return_pre_pos:
+            pre_rel_x = rel_x
+            pre_rel_y = rel_y + 0.01
+            pre_rel_coords = np.array([pre_rel_x, pre_rel_y])
+    elif contact_face == 'right':
+        rel_y = -0.5*yl - rl
+        rel_x = -rel_y * np.tan(psic)
+        rel_coords = np.array([rel_x, rel_y])
+        if return_pre_pos:
+            pre_rel_x = rel_x
+            pre_rel_y = rel_y - 0.01
+            pre_rel_coords = np.array([pre_rel_x, pre_rel_y])
+    else:
+        raise NotImplementedError('The contact face {0} is not supported!'.format(contact_face))
 
     if return_pre_pos:
         return rel_coords, pre_rel_coords
@@ -187,12 +228,52 @@ def get_v_by_u0(u0, tf, fa:FrankaArm):
     # q_G = Ja_inv @ np.array([0.02, 0., 0., 0., 0., 0.])
     return q_G, v_G
 
+class tfHandler(object):
+    def __init__(self, base_frame_name, slider_frame_name) -> None:
+        self.tfBuffer = tf2_ros.Buffer()
+        self.listener = tf2_ros.TransformListener(self.tfBuffer)
 
+        self.slider_frame_name = slider_frame_name
+        self.base_frame_name = base_frame_name
+
+    def get_transform(self, target_frame, source_frame):
+        rate = rospy.Rate(30)
+        while not rospy.is_shutdown():
+            try:
+                trans = self.tfBuffer.lookup_transform(target_frame, source_frame, rospy.Time(0))
+                break
+            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+                print('The transform from {0} to {1} does not exist!'.format(source_frame, target_frame))
+                rospy.logwarn('The transform from {0} to {1} does not exist!'.format(source_frame, target_frame))
+                rate.sleep()
+                continue
+        return trans
+
+    def get_slider_position_and_orientation(self):
+        """
+        :return: slider_pos (x, y, z)
+        :return: slider_ori theta
+        """
+        trans = self.get_transform(self.base_frame_name, self.slider_frame_name)
+        slider_pos = np.array([trans.transform.translation.x, \
+                               trans.transform.translation.y, \
+                               trans.transform.translation.z])
+        slider_quat = np.array([trans.transform.rotation.x, \
+                                trans.transform.rotation.y, \
+                                trans.transform.rotation.z, \
+                                trans.transform.rotation.w])
+
+        slider_rotmat = R.from_quat(slider_quat).as_matrix()
+        slider_x_axis_in_world = slider_rotmat[:, 0]
+        slider_ori = np.arctan2(slider_x_axis_in_world[1], slider_x_axis_in_world[0])
+
+        return slider_pos, slider_ori
 
 # ---- For Joint Velocity Control, usage similar to FrankaPyInterface
 class JointVelocityControlInterface(object):
-    def __init__(self, fa:FrankaArm):
+    def __init__(self, fa:FrankaArm, tf:tfHandler):
         self.fa = fa
+        self.tf = tf
         self.pub = rospy.Publisher(FC.DEFAULT_SENSOR_PUBLISHER_TOPIC, SensorDataGroup, queue_size=1000)
         self.init_time = 0
         self.i = 0
@@ -202,10 +283,127 @@ class JointVelocityControlInterface(object):
 
         self.v_G_lpf_coeff = 0.05
         self.last_v_G = None
+
+        self.controller_type = None  # 'joint_velocity' or 'ee_pose'
+
+    def refind_slider_out_of_view(self, steps=8):
+        """
+        Refind the slider marker in view
+        """
+        if check_slider_marker_in_view():
+            print('Info: slider already in view!')
+            return
+        print('Info: cannot find the slider, trying to refind!')
+        slider_maker_y_coords = []
+        q7_list = []
+        for q7 in np.linspace(FC.JOINT_LIMITS_MIN[-1]+0.05, FC.JOINT_LIMITS_MAX[-1]-0.05, steps):
+            q7_list.append(q7)
+            fa.goto_joints(np.append(fa.get_joints()[0:6], q7), duration=1, ignore_virtual_walls=True)
+            if check_slider_marker_in_view():
+                slider_marker_xy_in_image = acquire_slider_marker_center_in_image()
+                slider_maker_y_coords.append(slider_marker_xy_in_image[1])
+            else:
+                slider_maker_y_coords.append(np.inf)
+        if np.array(slider_maker_y_coords).min() >= 1e5:
+            print('Warning: cannot refind the slider in camera!')
+        q7_goal = q7_list[np.argmin(slider_maker_y_coords)]
+        fa.goto_joints(np.append(fa.get_joints()[0:6], q7_goal), duration=3, ignore_virtual_walls=True)
+        print('Info: refind the slider!')
+
+    def panda_goto_god_view(self):
+        """
+        Control panda to god view
+        """
+        q7_home = FC.HOME_JOINTS[-1]
+        self.fa.goto_joints(np.append(fa.get_joints()[0:6], q7_home), duration=1, ignore_virtual_walls=True)
+        pose_cur = self.fa.get_pose()
+        god_view_pose = RigidTransform(translation=GOD_VIEW_TRANSLATION, rotation=DEFAULT_ROTATION_MATRIX, \
+                                        from_frame=pose_cur.from_frame, to_frame=pose_cur.to_frame)
+        fa.goto_pose(god_view_pose, ignore_virtual_walls=True)
+
+    def get_ee_pos_in_contact(self, contact_face, get_pre_contact_pos=True):
+        """
+        Get the ee position when in contact
+        """
+        contact_ee_rel_pos, pre_contact_ee_rel_pos = get_rel_coords_on_slider(0., beta, contact_face, return_pre_pos=True)
+        if get_pre_contact_pos:
+            return pre_contact_ee_rel_pos
+        else:
+            return contact_ee_rel_pos
+
+    def get_slider_transform_coarse(self):
+        """
+        Get coarse slider pose
+        """
+        self.panda_goto_god_view()
+        slider_pos, slider_ori = self.tf.get_slider_position_and_orientation()
+        return np.array([slider_pos[0], slider_pos[1], slider_ori]), slider_pos[2]
+
+    def get_slider_transform_fine(self):
+        """
+        Get finer slider pose
+        """
+        slider_pos, slider_ori = self.tf.get_slider_position_and_orientation()
+        return np.array([slider_pos[0], slider_pos[1], slider_ori]), slider_pos[2]
+
+    def goto_face_coarse(self, contact_face):
+        """
+        Go to contact, based on coarse pose measurement
+        """
+        slider_state, slider_height = self.get_slider_transform_coarse()
+        ee_rel_pos = self.get_ee_pos_in_contact(contact_face, get_pre_contact_pos=True)
+        ee_abs_xy = get_desired_end_effector_xy_abs(slider_state, ee_rel_pos)
+
+        ee_pose_cur = self.fa.get_pose()
+        
+        ee_pose_via_point = ee_pose_cur.copy()
+        ee_pose_via_point.translation[0:2] = ee_abs_xy
+        ee_pose_via_point.rotation = DEFAULT_ROTATION_MATRIX
+        fa.goto_pose(ee_pose_via_point, ignore_virtual_walls=True)
+
+        ee_pose_goal_point = ee_pose_via_point.copy()
+        ee_pose_goal_point.translation[2] = slider_height - contact_point_depth
+        ee_pose_goal_point.rotation = DEFAULT_ROTATION_MATRIX
+        fa.goto_pose(ee_pose_goal_point, ignore_virtual_walls=True)
+        print('Info: franka arrived at slider coarsely!')
+
+    def goto_face_fine(self, contact_face):
+        """
+        Go to contact, based on finer pose measurement
+        """
+        self.refind_slider_out_of_view()
+        slider_state, slider_height = self.get_slider_transform_fine()
+        ee_rel_pos = self.get_ee_pos_in_contact(contact_face, get_pre_contact_pos=False)
+        ee_abs_xy = get_desired_end_effector_xy_abs(slider_state, ee_rel_pos)
+
+        ee_pose_cur = fa.get_pose()
+
+        ee_pose_goal_point = ee_pose_cur.copy()
+        ee_pose_goal_point.translation[0:2] = ee_abs_xy
+        ee_pose_goal_point.translation[2] = slider_height - contact_point_depth
+        ee_pose_goal_point.rotation = DEFAULT_ROTATION_MATRIX
+
+        fa.goto_pose(ee_pose_goal_point, use_impedance=False, ignore_virtual_walls=True)
+        self.refind_slider_out_of_view(steps=12)
+        print('Info: franka arrived at slider finely!')
+
+    def change_contact_face(self, contact_face):
+        """
+        Change another contact face
+        """
+        print('Info: change contact face!')
+        self.goto_face_coarse(contact_face)
+        self.goto_face_fine(contact_face)
     
     def joint_control_start(self):
+        """
+        Start joint velocity control skill
+        """
+        if self.controller_type is not None:
+            raise ValueError('Controller already initialized!')
+        self.controller_type = 'joint_velocity'
         self.home_joints = self.fa.get_joints()
-        max_execution_time = 30
+        max_execution_time = 100
         self.fa.dynamic_joint_velocity(joints=self.home_joints,
                               joints_vel=np.zeros((7,)),
                               duration=max_execution_time,
@@ -213,8 +411,42 @@ class JointVelocityControlInterface(object):
                               block=False)
         self.init_time = rospy.Time.now().to_time()
         self.i = 0
+
+    def joint_control_stop_move(self):
+        if self.controller_type != 'joint_velocity':
+            raise ValueError('Controller type should be joint_velocity, but {0} called!'.format(self.controller_type))
+        """
+        Send zero velocity command
+        Panda will stop move immediately
+        """
+        timestamp = rospy.Time.now().to_time() - self.init_time
+
+        traj_gen_proto_msg = JointPositionVelocitySensorMessage(
+            id=self.i, timestamp=timestamp,
+            seg_run_time=30.0,
+            joints=self.home_joints,
+            joint_vels=np.zeros(7)
+        )
+
+        ros_msg = make_sensor_group_msg(
+            trajectory_generator_sensor_msg=sensor_proto2ros_msg(
+                traj_gen_proto_msg, SensorDataMessageType.JOINT_POSITION_VELOCITY)
+        )
+        self.pub.publish(ros_msg)
+        self.i += 1
+        print('Info: panda stops move!')
+
+    def pose_control_stop_move(self):
+        if self.controller_type != 'ee_pose':
+            raise ValueError('Controller type should be ee_pose, but {0} called!'.format(self.controller_type))
+        print('Info: panda stops move!')
     
     def joint_control_go(self, u0, tf):
+        """
+        Calculate the desired velocity by limit surface F-V model
+        """
+        if self.controller_type != 'joint_velocity':
+            raise ValueError('Controller type should be joint_velocity, but {0} called!'.format(self.controller_type))
         q_G, v_G = get_v_by_u0(u0, tf, self.fa)
 
         if self.last_v_G is None:
@@ -256,7 +488,12 @@ class JointVelocityControlInterface(object):
         self.i += 1
 
     def joint_control_go_delta_x(self, x0, x1, dt, tf):
+        """
+        Calculate the desired end effector velocity by (x1 - x0) / dt
+        """
         # xy_ee = self.fa.get_pose().translation[:2]
+        if self.controller_type != 'joint_velocity':
+            raise ValueError('Controller type should be joint_velocity, but {0} called!'.format(self.controller_type))
         xy_ee = get_abs_coords_on_slider(
                         get_rel_coords_on_slider(x0[3], beta, contact_face='back', return_pre_pos=False),
                         x0[:3]
@@ -319,54 +556,92 @@ class JointVelocityControlInterface(object):
         self.i += 1
     
     def joint_control_terminate(self):
+        """
+        Send termination message and kill the skill.
+        If you do not kill the skill, an error will be raised for skill conflicts
+        """
+        if self.controller_type != 'joint_velocity':
+            raise ValueError('Controller type should be joint_velocity, but {0} called!'.format(self.controller_type))
         term_proto_msg = ShouldTerminateSensorMessage(timestamp=rospy.Time.now().to_time() - self.init_time, should_terminate=True)
         ros_msg = make_sensor_group_msg(
             termination_handler_sensor_msg=sensor_proto2ros_msg(
                 term_proto_msg, SensorDataMessageType.SHOULD_TERMINATE)
             )
         self.pub.publish(ros_msg)
-        rospy.loginfo('Done')
+        self.fa.stop_skill()
+
+    def pose_control_start(self):
+        if self.controller_type is not None:
+            raise ValueError('Controller already initialized!')
+        self.controller_type = 'ee_pose'
+        self.home_pose = self.fa.get_pose()
+        max_execution_time = 100
+        self.fa.goto_pose(tool_pose=self.home_pose,
+                          duration=max_execution_time,
+                          use_impedance=False,
+                          dynamic=True,
+                          buffer_time=10,
+                          block=False,
+                          ignore_virtual_walls=True)
+        self.pusher_tip_height = self.home_pose.translation[2]  # z-coordinate of the pusher
+        self.init_time = rospy.Time.now().to_time()
+        self.i = 0
+
+    def pose_control_go(self, x1):
+        if self.controller_type != 'ee_pose':
+            raise ValueError('Controller type should be ee_pose, but {0} called!'.format(self.controller_type))
+        
+        Jac = fa.get_jacobian(fa.get_joints())
+        q_G = fa.get_joint_velocities()
+        v_G = Jac @ q_G
+        self.record.append(v_G)
+
+        xy_ee_next = get_abs_coords_on_slider(
+                        get_rel_coords_on_slider(x1[3], beta, contact_face='back', return_pre_pos=False),
+                        x1[:3]
+                    )
+
+        pose_cur = self.fa.get_pose()
+        xy_ee = pose_cur.translation[0:2]
+
+        xy_ee_next = xy_ee_next + 0.4 * (xy_ee_next - xy_ee)
+
+        pose = RigidTransform(translation=np.append(xy_ee_next, self.pusher_tip_height), rotation=DEFAULT_ROTATION_MATRIX, \
+                              from_frame=pose_cur.from_frame, to_frame=pose_cur.to_frame)
+
+        if np.linalg.norm(pose_cur.translation[0:2]-xy_ee_next) > MAX_TRANSLATION_DESIRED:
+            pose = pose_cur.copy()
+
+        timestamp = rospy.Time.now().to_time() - self.init_time
+        traj_gen_proto_msg = PosePositionSensorMessage(
+            id=self.i, timestamp=timestamp, 
+            position=pose.translation, quaternion=pose.quaternion
+        )
+        fb_ctrlr_proto = CartesianImpedanceSensorMessage(
+            id=self.i, timestamp=timestamp,
+            translational_stiffnesses=FC.DEFAULT_TRANSLATIONAL_STIFFNESSES,
+            rotational_stiffnesses=FC.DEFAULT_ROTATIONAL_STIFFNESSES
+        )
+        ros_msg = make_sensor_group_msg(
+            trajectory_generator_sensor_msg=sensor_proto2ros_msg(
+                traj_gen_proto_msg, SensorDataMessageType.POSE_POSITION),
+            feedback_controller_sensor_msg=sensor_proto2ros_msg(
+                fb_ctrlr_proto, SensorDataMessageType.CARTESIAN_IMPEDANCE)
+            )
+
+        self.pub.publish(ros_msg)
+        self.i += 1
+
+    def pose_control_terminite(self):
+        if self.controller_type != 'ee_pose':
+            raise ValueError('Controller type should be ee_pose, but {0} called!'.format(self.controller_type))
+        term_proto_msg = ShouldTerminateSensorMessage(timestamp=rospy.Time.now().to_time() - self.init_time, should_terminate=True)
+        ros_msg = make_sensor_group_msg(
+            termination_handler_sensor_msg=sensor_proto2ros_msg(
+                term_proto_msg, SensorDataMessageType.SHOULD_TERMINATE)
+            )
+        self.pub.publish(ros_msg)
     
-class tfHandler(object):
-    def __init__(self, base_frame_name, slider_frame_name) -> None:
-        self.tfBuffer = tf2_ros.Buffer()
-        self.listener = tf2_ros.TransformListener(self.tfBuffer)
-
-        self.slider_frame_name = slider_frame_name
-        self.base_frame_name = base_frame_name
-
-    def get_transform(self, target_frame, source_frame):
-        rate = rospy.Rate(30)
-        while not rospy.is_shutdown():
-            try:
-                trans = self.tfBuffer.lookup_transform(target_frame, source_frame, rospy.Time(0))
-                break
-            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
-                print('The transform from {0} to {1} does not exist!'.format(source_frame, target_frame))
-                rospy.logwarn('The transform from {0} to {1} does not exist!'.format(source_frame, target_frame))
-                rate.sleep()
-                continue
-        return trans
-
-    def get_slider_position_and_orientation(self):
-        """
-        :return: slider_pos (x, y, z)
-        :return: slider_ori theta
-        """
-        trans = self.get_transform(self.base_frame_name, self.slider_frame_name)
-        slider_pos = np.array([trans.transform.translation.x, \
-                               trans.transform.translation.y, \
-                               trans.transform.translation.z])
-        slider_quat = np.array([trans.transform.rotation.x, \
-                                trans.transform.rotation.y, \
-                                trans.transform.rotation.z, \
-                                trans.transform.rotation.w])
-
-        slider_rotmat = R.from_quat(slider_quat).as_matrix()
-        slider_x_axis_in_world = slider_rotmat[:, 0]
-        slider_ori = np.arctan2(slider_x_axis_in_world[1], slider_x_axis_in_world[0])
-
-        return slider_pos, slider_ori
 
 class FrankaPyInterface(object):
     def __init__(self, fa:FrankaArm) -> None:
@@ -375,7 +650,8 @@ class FrankaPyInterface(object):
     
     def pose_control_start(self, pose0):
         fa.goto_pose(pose0, duration=100, dynamic=True, buffer_time=10,
-            cartesian_impedances=FC.DEFAULT_TRANSLATIONAL_STIFFNESSES + FC.DEFAULT_ROTATIONAL_STIFFNESSES
+            cartesian_impedances=FC.DEFAULT_TRANSLATIONAL_STIFFNESSES + FC.DEFAULT_ROTATIONAL_STIFFNESSES,
+            ignore_virtual_walls=True
         )
         self.init_time = rospy.Time.now().to_time()
 
@@ -411,7 +687,7 @@ class FrankaPyInterface(object):
 
 # Set Problem constants
 #  -------------------------------------------------------------------
-T = 10  # time of the simulation is seconds
+T = 35  # time of the simulation is seconds
 freq = 20  # number of increments per second
 # N_MPC = 12 # time horizon for the MPC controller
 N_MPC = 25  # time horizon for the MPC controller
@@ -428,11 +704,15 @@ Nidx = int(N)
 idxDist = 5.*freq
 # Nidx = 10
 #  -------------------------------------------------------------------
-contact_point_depth = 0.03
+contact_point_depth = 0.0
 L_SURF_SCALE = 1.3888888888888888
 # L_SURF_SCALE = 1.
 VELOCITY_SCALE = 1.
-MAX_VELOCITY_DESIRED = 0.05
+MAX_VELOCITY_DESIRED = 0.05 / 3.5
+MAX_TRANSLATION_DESIRED = 0.05  # the maximum translation when running (dynamic) goto_pose
+
+# controller_type = 'ee_pose'
+controller_type = 'ee_pose'
 
 base_frame_name = 'panda_link0'
 slider_frame_name = 'marker1_frame'
@@ -448,7 +728,21 @@ tf_handler = tfHandler(base_frame_name=base_frame_name,
 # initialize Franka control
 #  -------------------------------------------------------------------
 franka_ctrl = FrankaPyInterface(fa)
-joint_velocity_ctrl = JointVelocityControlInterface(fa)
+joint_velocity_ctrl = JointVelocityControlInterface(fa, tf_handler)
+rospy.wait_for_service('/aruco_simple/ask_for_pose_ready')
+rospy.wait_for_service('/aruco_simple/ask_for_marker_center')
+ask_for_marker1_in_view = rospy.ServiceProxy('/aruco_simple/ask_for_pose_ready', Trigger)
+ask_for_marker1_center = rospy.ServiceProxy('/aruco_simple/ask_for_marker_center', AskForMarkerCenter)
+#  -------------------------------------------------------------------
+
+# initialize Franka pose
+#  -------------------------------------------------------------------
+joint_velocity_ctrl.change_contact_face('back')
+rospy.loginfo('Move the pusher to start position!')
+if controller_type == 'joint_velocity':
+    joint_velocity_ctrl.joint_control_start()
+elif controller_type == 'ee_pose':
+    joint_velocity_ctrl.pose_control_start()
 #  -------------------------------------------------------------------
 
 # define system dynamics
@@ -472,6 +766,7 @@ X_goal = tracking_config['TO']['X_goal']
 # print(X_goal)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, N_MPC)
 x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.35, 0.0, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_sine(0.3, 0.0, 0.03, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_ellipse(-np.pi/2, 3*np.pi/2, 0.2, 0.1, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.3, N, N_MPC)
@@ -491,11 +786,6 @@ dynNom = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
 )
 optObjNom = sliding_pack.to.buildOptObj(
         dynNom, N+N_MPC, planning_config['TO'], dt=dt, max_iter=100)
-beta = [
-    planning_config['dynamics']['xLenght'],
-    planning_config['dynamics']['yLenght'],
-    planning_config['dynamics']['pusherRadious']
-]
 
 # initialize limit surface matrix
 L_surf = dyn.A(beta).toarray() * L_SURF_SCALE
@@ -522,22 +812,16 @@ optObj = sliding_pack.to.buildOptObj(
 )
 #  -------------------------------------------------------------------
 
-import pdb; pdb.set_trace()
-
 # control panda to start position
 #  -------------------------------------------------------------------
-pusher_psic_init = x_init_val[3]
-x_rel_init, x_pre_rel_init = get_rel_coords_on_slider(pusher_psic_init, beta, contact_face='back', return_pre_pos=True)
-x_rel_init = x_rel_init + [0.0, 0.0]
-panda_ee_xy_desired = get_desired_end_effector_xy_abs(np.append(slider_abs_pos[:2], slider_abs_ori), x_rel_init)
-panda_ee_z_desired = slider_abs_pos[2] - contact_point_depth
-panda_ee_xy_pre_desired = get_desired_end_effector_xy_abs(np.append(slider_abs_pos[:2], slider_abs_ori), x_pre_rel_init)
-panda_ee_z_pre_desired = slider_abs_pos[2] - contact_point_depth
-pose_init = panda_move_to_pose(fa, np.append(panda_ee_xy_desired, panda_ee_z_desired), np.append(panda_ee_xy_pre_desired, panda_ee_z_pre_desired))
-
-rospy.loginfo('Panda moved to slider!')
-
-joint_velocity_ctrl.joint_control_start()
+# pusher_psic_init = x_init_val[3]
+# x_rel_init, x_pre_rel_init = get_rel_coords_on_slider(pusher_psic_init, beta, contact_face='back', return_pre_pos=True)
+# x_rel_init = x_rel_init + [0.0, 0.0]
+# panda_ee_xy_desired = get_desired_end_effector_xy_abs(np.append(slider_abs_pos[:2], slider_abs_ori), x_rel_init)
+# panda_ee_z_desired = slider_abs_pos[2] - contact_point_depth
+# panda_ee_xy_pre_desired = get_desired_end_effector_xy_abs(np.append(slider_abs_pos[:2], slider_abs_ori), x_pre_rel_init)
+# panda_ee_z_pre_desired = slider_abs_pos[2] - contact_point_depth
+# pose_init = panda_move_to_pose(fa, np.append(panda_ee_xy_desired, panda_ee_z_desired), np.append(panda_ee_xy_pre_desired, panda_ee_z_pre_desired))
 #  -------------------------------------------------------------------
 
 # Initialize variables for plotting
@@ -592,6 +876,24 @@ for idx in range(Nidx-1):
     #     x0[1] += -0.03
     #     x0[2] += 30.*(np.pi/180.)
     # ---- solve problem ----
+
+    # make sure the slider marker is in view
+    if not check_slider_marker_in_view():
+        if controller_type == 'joint_velocity':
+            joint_velocity_ctrl.joint_control_stop_move()
+            rospy.sleep(1.0)
+            joint_velocity_ctrl.joint_control_terminate()
+            joint_velocity_ctrl.refind_slider_out_of_view()
+            import pdb; pdb.set_trace()
+            joint_velocity_ctrl.joint_control_start()
+        elif controller_type == 'ee_pose':
+            joint_velocity_ctrl.pose_control_stop_move()
+            rospy.sleep(1.0)
+            joint_velocity_ctrl.pose_control_terminite()
+            joint_velocity_ctrl.refind_slider_out_of_view()
+            import pdb; pdb.set_trace()
+            joint_velocity_ctrl.pose_control_start()
+
     slider_abs_pos, slider_abs_ori = tf_handler.get_slider_position_and_orientation()
     psic = get_psic(fa, tf_handler)
     x0 = [slider_abs_pos[0], slider_abs_pos[1], slider_abs_ori, psic]
@@ -617,7 +919,11 @@ for idx in range(Nidx-1):
     u0 = u_opt[:, 0].elements()
 
     # ---- send joint velocity by u0 (v0) ----
-    joint_velocity_ctrl.joint_control_go(u0, tf_handler)
+    if controller_type == 'joint_velocity':
+        joint_velocity_ctrl.joint_control_go(u0, tf_handler)
+    elif controller_type == 'ee_pose':
+        x1 = (x0 + dyn.f(x0, u0, beta)*dt).elements()
+        joint_velocity_ctrl.pose_control_go(x1)
     # ---- send joint velocity by u0 (v1) ----
     # x0_old = x0.copy()
     # x0 = (x0 + dyn.f(x0, u0, beta)*dt).elements()
@@ -647,7 +953,10 @@ for idx in range(Nidx-1):
     print('loop time cost: ', time_loop_end - time_loop_start)
 #  -------------------------------------------------------------------
 # stop joint velocity control interface
-joint_velocity_ctrl.joint_control_terminate()
+if controller_type == 'joint_velocity':
+    joint_velocity_ctrl.joint_control_terminate()
+elif controller_type == 'ee_pose':
+    joint_velocity_ctrl.pose_control_terminite()
 #  -------------------------------------------------------------------
 # show sparsity pattern
 # sliding_pack.plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xu_opt)
