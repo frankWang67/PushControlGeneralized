@@ -28,10 +28,14 @@ planning_config = sliding_pack.load_config('planning_switch_config.yaml')
 
 # Set Problem constants
 #  -------------------------------------------------------------------
-T = 10  # time of the simulation is seconds
-freq = 15  # number of increments per second
+# T = 10  # time of the simulation is seconds
+T = 35  # time of the simulation is seconds
+
+# freq = 15  # number of increments per second
+freq = 20  # number of increments per second
+
 # N_MPC = 12 # time horizon for the MPC controller
-N_MPC = 25  # time horizon for the MPC controller
+N_MPC = 30  # time horizon for the MPC controller
 # x_init_val = [-0.03, 0.03, 30*(np.pi/180.), 0]
 
 ## x_traj from real robot exp
@@ -39,10 +43,11 @@ x_traj = np.load('./data/x_traj.npy')
 u_traj = np.load('./data/u_traj.npy')
 
 
-x_init_val = [0., 0., 0.2*np.pi, 0.]
+# x_init_val = [0., 0., 0.2*np.pi, 0.]
 # x_init_val = [0., 0.03, 0.02*np.pi, 0]
 # x_init_val = [0.4241445, 0.01386, -0.0365, 0.]
-# x_init_val = x_traj[:, 0].tolist()
+
+x_init_val = x_traj[:, 0].tolist()
 
 show_anim = True
 save_to_file = False
@@ -61,7 +66,8 @@ idxDist = 5.*freq
 dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
         tracking_config['dynamics'],
         tracking_config['TO']['contactMode'],
-        pusherAngleLim=tracking_config['dynamics']['xFacePsiLimit']
+        pusherAngleLim=tracking_config['dynamics']['xFacePsiLimit'],
+        limit_surf_gain=1.
 )
 #  -------------------------------------------------------------------
 
@@ -76,8 +82,10 @@ x0_nom, x1_nom = sliding_pack.traj.generate_traj_sine(0.3, 0.0, 0.05, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_ellipse(-np.pi/2, 3*np.pi/2, 0.2, 0.1, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.3, N, N_MPC)
+
 ## offset nominal traj
-# x0_nom, x1_nom = x0_nom+x_init_val[0], x1_nom+x_init_val[1]
+x0_nom, x1_nom = x0_nom+x_init_val[0], x1_nom+x_init_val[1]
+
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -91,7 +99,7 @@ dynNom = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
         pusherAngleLim=tracking_config['dynamics']['xFacePsiLimit']
 )
 optObjNom = sliding_pack.to.buildOptObj(
-        dynNom, N+N_MPC, planning_config['TO'], dt=dt, max_iter=100)
+        dynNom, N+N_MPC, planning_config['TO'], dt=dt, max_iter=150)
 beta = [
     planning_config['dynamics']['xLenght'],
     planning_config['dynamics']['yLenght'],
@@ -115,7 +123,7 @@ X_nom_comp = f_rollout([0., 0., 0., 0.], U_nom_val_opt)
 #  -------------------------------------------------------------------
 optObj = sliding_pack.to.buildOptObj(
         dyn, N_MPC, tracking_config['TO'],
-        X_nom_val, None, dt=dt, max_iter=60
+        X_nom_val, None, dt=dt, max_iter=80
 )
 #  -------------------------------------------------------------------
 
@@ -167,7 +175,8 @@ for idx in range(Nidx-1):
     #     x0[1] += -0.03
     #     x0[2] += 30.*(np.pi/180.)
     # ---- solve problem ----
-    # x0 = x_traj[:, idx].tolist()
+    x0 = x_traj[:, idx+1].tolist()
+    X_plot[:, idx+1] = x0
     resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(
             idx, x0, beta,
             S_goal_val=S_goal_val,
@@ -178,11 +187,15 @@ for idx in range(Nidx-1):
     u0 = u_opt[:, 0].elements()
     # x0 = x_opt[:,1].elements()
     x0 = (x0 + dyn.f(x0, u0, beta)*dt).elements()
+
+    ## add noise to x0
+    # x0 = np.array(x0) + np.random.uniform(low=[])
+
     # ---- store values for plotting ----
     comp_time[idx] = t_opt
     success[idx] = resultFlag
     cost_plot[idx] = f_opt
-    X_plot[:, idx+1] = x0
+    # X_plot[:, idx+1] = x0
     U_plot[:, idx] = u0
     X_future[:, :, idx] = np.array(x_opt)
     if dyn.Nz > 0:
@@ -226,7 +239,7 @@ X_pusher_opt = p_map(X_plot)
 #     print(time[:, None].shape)
 #     df_action = pd.DataFrame(
 #                     np.concatenate((
-#                         U_plot.transpose(),
+#                 150        U_plot.transpose(),
 #                         time[:, None],
 #                         cost_plot,
 #                         comp_time
@@ -339,8 +352,8 @@ for i in range(dyn.Nu):
     axs[2, i].plot(t_Nu, U_nom_val_opt[i, 0:N-1].T, color='blue',
                    linestyle='--', label='plan')
     axs[2, i].plot(t_idx_u, U_plot[i, :], color='orange', label='mpc')
-    if i == 1:
-        axs[2, i].plot(t_idx_u, U_plot[2, :] - U_plot[3, :], color='green', label='dpsic')
+    # if i == 1:
+    #     axs[2, i].plot(t_idx_u, U_plot[2, :] - U_plot[3, :], color='green', label='dpsic')
     handles, labels = axs[2, i].get_legend_handles_labels()
     axs[2, i].legend(handles, labels)
     axs[2, i].set_xlabel('time [s]')

@@ -59,6 +59,9 @@ class buildOptObj():
         self.args.lbg = []
         self.args.ubg = []
 
+        # disturbance observer
+        self.d_hat = cs.SX.sym('d_hat', self.dyn.Nx)
+
         # set optimization variables
         self.X_nom = cs.SX.sym('X_nom', self.dyn.Nx, self.TH)
         if self.linDyn:
@@ -120,8 +123,8 @@ class buildOptObj():
             __x_next = cs.SX.sym('__x_next', self.dyn.Nx)
             self.f_error = cs.Function(
                     'f_error',
-                    [self.dyn.x, self.dyn.u, __x_next, self.dyn.beta],
-                    [__x_next-self.dyn.x-dt*self.dyn.f(self.dyn.x,self.dyn.u,self.dyn.beta)])
+                    [self.dyn.x, self.dyn.u, __x_next, self.dyn.beta, self.d_hat],
+                    [__x_next-self.dyn.x-dt*(self.dyn.f(self.dyn.x,self.dyn.u,self.dyn.beta)+self.d_hat)])
         # ---- Map dynamics constraint ----
         self.F_error = self.f_error.map(self.TH-1)
         #  -------------------------------------------------------------------
@@ -206,7 +209,8 @@ class buildOptObj():
             self.opt.g += self.F_error(
                     self.X[:, :-1], self.U, 
                     self.X[:, 1:],
-                    self.dyn.beta).elements()
+                    self.dyn.beta,
+                    self.d_hat).elements()
         self.args.lbg += [0.] * self.dyn.Nx * (self.TH-1)
         self.args.ubg += [0.] * self.dyn.Nx * (self.TH-1)
         # ---- Friction constraints ----
@@ -247,6 +251,8 @@ class buildOptObj():
         self.opt.p += self.dyn.beta.elements()
         self.opt.p += self.x0.elements()
         self.opt.p += self.X_nom.elements()
+        if not self.linDyn:
+            self.opt.p += self.d_hat.elements()
         if self.useGoalFlag:
             self.opt.p += self.X_goal_var.elements()
             self.opt.p += self.S_goal.elements()
@@ -271,6 +277,7 @@ class buildOptObj():
             opts_dict['ipopt.hessian_constant'] = 'yes'
         if self.solver_name == 'knitro':
             opts_dict['knitro'] = {}
+            opts_dict['knitro.outlev'] = 0
             # opts_dict['knitro.maxit'] = 80
             opts_dict['knitro.feastol'] = 1.e-3
             if self.no_printing: opts_dict['knitro']['mip_outlevel'] = 0
@@ -307,7 +314,7 @@ class buildOptObj():
             self.solver = cs.qpsol('solver', self.solver_name, prob, opts_dict)
         #  -------------------------------------------------------------------
 
-    def solveProblem(self, idx, x0, beta,
+    def solveProblem(self, idx, x0, beta, d_hat,
                      X_warmStart=None, u_warmStart=None,
                      obsCentre=None, obsRadius=None, S_goal_val=None, X_goal_val=None):
         if self.numObs > 0:
@@ -320,6 +327,7 @@ class buildOptObj():
         print(beta)
         p_ += x0
         p_ += self.X_nom_val[:, idx:(idx+self.TH)].elements()
+        p_ += d_hat
         if self.useGoalFlag:
             if X_goal_val is None:
                 p_ += x0
