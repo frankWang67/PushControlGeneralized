@@ -61,6 +61,38 @@ DEFAULT_ROTATION_MATRIX = np.c_[x_axis_in_world, \
 GOD_VIEW_TRANSLATION = np.array([0.50686447, -0.04996442, 0.53985807])
 #  -------------------------------------------------------------------
 
+# math utils
+#  -------------------------------------------------------------------
+def get_theta_offset(contact_face):
+    """
+        real theta = measured theta + theta offset
+    """
+    if contact_face == 'front':
+        theta_offset = np.pi
+    elif contact_face == 'back':
+        theta_offset = 0
+    elif contact_face == 'left':
+        theta_offset = -np.pi/2
+    elif contact_face == 'right':
+        theta_offset = np.pi/2
+    else:
+        raise NotImplementedError('The contact face {0} is not supported!'.format(contact_face))
+    return theta_offset
+
+def get_beta_with_face(contact_face):
+    xl, yl, rl = beta
+    if contact_face == 'front':
+        beta_with_face = [xl, yl, rl]
+    elif contact_face == 'back':
+        beta_with_face = [xl, yl, rl]
+    elif contact_face == 'left':
+        beta_with_face = [yl, xl, rl]
+    elif contact_face == 'right':
+        beta_with_face = [yl, xl, rl]
+    else:
+        raise NotImplementedError('The contact face {0} is not supported!'.format(contact_face))
+    return beta_with_face
+
 # Panda ROS control
 #  -------------------------------------------------------------------
 def check_slider_marker_in_view():
@@ -125,6 +157,7 @@ def panda_move_to_pose(fa:FrankaArm, trans, trans_pre=None):
 
 def get_rel_coords_on_slider(psic, beta, contact_face, return_pre_pos):
     """
+    :param psic: around 0
     :param return_pre_pose: if true, return the pre-contact pos
     """
     xl, yl, rl = beta
@@ -182,6 +215,21 @@ def get_psic(fa, tf):
     franka_pos.translation[0] -= 0.0
     franka_pos.translation[1] -= 0.0
     slider_pos, slider_ori = tf.get_slider_position_and_orientation()
+    vec = rotation_matrix(slider_ori).T @ (franka_pos.translation - slider_pos)[0:2] + [beta[2], 0]
+    phi = np.arctan2(-vec[1], -vec[0])
+    return phi
+
+def get_psic_with_face(fa, tf, contact_face):
+    if contact_face is None:
+        raise ValueError('Contact face is not provided!')
+
+    franka_pos = fa.get_pose()
+    slider_pos, slider_ori = tf.get_slider_position_and_orientation()
+
+    # offset theta according to contact face
+    theta_offset = get_theta_offset(contact_face)
+    slider_ori = slider_ori + theta_offset
+
     vec = rotation_matrix(slider_ori).T @ (franka_pos.translation - slider_pos)[0:2] + [beta[2], 0]
     phi = np.arctan2(-vec[1], -vec[0])
     return phi
@@ -249,11 +297,14 @@ class tfHandler(object):
                 continue
         return trans
 
-    def get_slider_position_and_orientation(self):
+    def get_slider_position_and_orientation(self, contact_face):
         """
         :return: slider_pos (x, y, z)
         :return: slider_ori theta
         """
+        if contact_face is None:
+            raise ValueError('Contact face is not provided!')
+
         trans = self.get_transform(self.base_frame_name, self.slider_frame_name)
         slider_pos = np.array([trans.transform.translation.x, \
                                trans.transform.translation.y, \
@@ -746,10 +797,7 @@ ask_for_marker1_center = rospy.ServiceProxy('/aruco_simple/ask_for_marker_center
 #  -------------------------------------------------------------------
 joint_velocity_ctrl.change_contact_face('back')
 rospy.loginfo('Move the pusher to start position!')
-if controller_type == 'joint_velocity':
-    joint_velocity_ctrl.joint_control_start()
-elif controller_type == 'ee_pose':
-    joint_velocity_ctrl.pose_control_start()
+joint_velocity_ctrl.pose_control_start()
 #  -------------------------------------------------------------------
 
 # define system dynamics

@@ -29,7 +29,7 @@ planning_config = sliding_pack.load_config('planning_switch_config.yaml')
 # Set Problem constants
 #  -------------------------------------------------------------------
 # T = 10  # time of the simulation is seconds
-T = 35  # time of the simulation is seconds
+T = 30  # time of the simulation is seconds
 
 # freq = 15  # number of increments per second
 freq = 20  # number of increments per second
@@ -44,10 +44,10 @@ u_traj = np.load('./data/u_traj.npy')
 
 
 # x_init_val = [0., 0., 0.2*np.pi, 0.]
-# x_init_val = [0., 0.03, 0.02*np.pi, 0]
+x_init_val = [0., 0.0, 0.02*np.pi, 0]
 # x_init_val = [0.4241445, 0.01386, -0.0365, 0.]
 
-x_init_val = x_traj[:, 0].tolist()
+# x_init_val = x_traj[:, 0].tolist()
 
 show_anim = True
 save_to_file = False
@@ -57,7 +57,7 @@ save_to_file = False
 dt = 1.0/freq  # sampling time
 N = int(T*freq)  # total number of iterations
 Nidx = int(N)
-idxDist = 5.*freq
+idxDist = 15.*freq
 # Nidx = 10
 #  -------------------------------------------------------------------
 
@@ -75,16 +75,16 @@ dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
 #  -------------------------------------------------------------------
 X_goal = tracking_config['TO']['X_goal']
 # print(X_goal)
-# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.2, 0.0, N, N_MPC)
-x0_nom, x1_nom = sliding_pack.traj.generate_traj_sine(0.3, 0.0, 0.05, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.35, 0.0, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_sine(0.3, 0.0, 0.05, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
-# x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2, N, N_MPC)
+x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_ellipse(-np.pi/2, 3*np.pi/2, 0.2, 0.1, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.3, N, N_MPC)
 
 ## offset nominal traj
-x0_nom, x1_nom = x0_nom+x_init_val[0], x1_nom+x_init_val[1]
+# x0_nom, x1_nom = x0_nom+x_init_val[0], x1_nom+x_init_val[1]
 
 #  -------------------------------------------------------------------
 # stack state and derivative of state
@@ -106,7 +106,7 @@ beta = [
     planning_config['dynamics']['pusherRadious']
 ]
 resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(
-        0, [0., 0., 0.*(np.pi/180.), 0.], beta,
+        0, [0., 0., 0.*(np.pi/180.), 0.], beta, [0., 0., 0., 0.],
         X_warmStart=X_nom_val)
 if dyn.Nu > dynNom.Nu:
     U_nom_val_opt = cs.vertcat(
@@ -134,6 +134,7 @@ U_plot = np.empty([dyn.Nu, Nidx-1])
 del_plot = np.empty([dyn.Nz, Nidx-1])
 X_plot[:, 0] = x_init_val
 X_future = np.empty([dyn.Nx, N_MPC, Nidx])
+U_future = np.empty([dyn.Nu, N_MPC-1, Nidx])
 comp_time = np.empty((Nidx-1, 1))
 success = np.empty(Nidx-1)
 cost_plot = np.empty((Nidx-1, 1))
@@ -169,16 +170,16 @@ for idx in range(Nidx-1):
     #     break
     print('-------------------------')
     print(idx)
-    # if idx == idxDist:
-    #     print('i died here')
-    #     x0[0] += 0.03
-    #     x0[1] += -0.03
-    #     x0[2] += 30.*(np.pi/180.)
+    if idx == idxDist:
+        print('i died here')
+        x0[0] += 0.0
+        x0[1] += -0.03
+        x0[2] += 0.*(np.pi/180.)
     # ---- solve problem ----
-    x0 = x_traj[:, idx+1].tolist()
+    # x0 = x_traj[:, idx+1].tolist()
     X_plot[:, idx+1] = x0
     resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(
-            idx, x0, beta,
+            idx, x0, beta, [0., 0., 0., 0.],
             S_goal_val=S_goal_val,
             obsCentre=obsCentre, obsRadius=obsRadius)
     print(f_opt)
@@ -198,6 +199,7 @@ for idx in range(Nidx-1):
     # X_plot[:, idx+1] = x0
     U_plot[:, idx] = u0
     X_future[:, :, idx] = np.array(x_opt)
+    U_future[:, :, idx] = np.array(u_opt)
     if dyn.Nz > 0:
         del_plot[:, idx] = del_opt[:, 0].elements()
     # ---- update selection matrix ----
@@ -360,6 +362,17 @@ for i in range(dyn.Nu):
     axs[2, i].set_ylabel('u%d' % i)
     axs[2, i].grid()
 #  -------------------------------------------------------------------
+
+data_log = {
+    'X_plot': X_plot,
+    'U_plot': U_plot,
+    'X_nom_val': X_nom_val,
+    'X_future': X_future,
+    'U_future': U_future
+}
+
+import pickle
+pickle.dump(data_log, open('./data/tracking_simulation_data.npy', 'wb'))
 
 #  -------------------------------------------------------------------
 plt.show()

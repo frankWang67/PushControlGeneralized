@@ -39,6 +39,9 @@ def angle_diff(angle1, angle2):
     """
     Calculate the difference (angle2-angle1) ∈ [-pi, pi]
     """
+    # restrict angle in [-pi, pi]
+    angle1 = restrict_angle_in_unit_circle(angle1)
+    angle2 = restrict_angle_in_unit_circle(angle2)
     diff1 = angle2 - angle1
     diff2 = 2 * np.pi - np.abs(diff1)
     if diff1 > 0:
@@ -47,6 +50,23 @@ def angle_diff(angle1, angle2):
         return diff1
     else:
         return diff2
+
+def angle_array_diff(angle_array1, angle_array2):
+    angle_array1 = restrict_angle_in_unit_circle(angle_array1)
+    angle_array2 = restrict_angle_in_unit_circle(angle_array2)
+    diff1 = angle_array2 - angle_array1
+    diff2 = 2 * np.pi - np.abs(diff1)
+    diff = np.empty_like(diff1)
+    diff2[diff1>0] = -diff2[diff1>0]
+    diff[np.abs(diff1)<np.abs(diff2)] = diff1[np.abs(diff1)<np.abs(diff2)]
+    diff[np.abs(diff1)>=np.abs(diff2)] = diff2[np.abs(diff1)>=np.abs(diff2)]
+    return diff
+
+def restrict_angle_in_unit_circle(angle):
+    """
+        restrict angle in [-pi, pi]
+    """
+    return (angle - (-np.pi)) % (2 * np.pi) + (-np.pi)
 
 def make_angle_continuous(angle):
     """

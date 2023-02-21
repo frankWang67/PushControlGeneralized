@@ -20,7 +20,8 @@ import tf2_ros
 
 # configurations
 # ----------------------------------------------------
-base_frame = 'panda_link0'
+# base_frame = 'panda_link0'
+base_frame = 'world'
 slider_frame = 'marker1_frame'
 movable_frame = 'marker2_frame'
 immovable_frame1 = 'marker3_frame'
@@ -86,24 +87,24 @@ trans_immovable2 = tf_handler.get_transform(base_frame, immovable_frame2)
 quat0 = quaternion2array(trans_slider.transform.rotation)
 theta0 = quaternion2theta(quat0)
 position0 = position2array(trans_slider.transform.translation)
-x_init = np.append(position0, theta0)
+x_init = np.append(position0[0:2], theta0)
 
 # movable
 quat1 = quaternion2array(trans_movable.transform.rotation)
 theta1 = quaternion2theta(quat1)
 position1 = position2array(trans_movable.transform.translation)
-x_movable = np.append(position1, theta1)
+x_movable = np.append(position1[0:2], theta1)
 
 # immovable
 quat2 = quaternion2array(trans_immovable1.transform.rotation)
 theta2 = quaternion2theta(quat2)
 position2 = position2array(trans_immovable1.transform.translation)
-x_immovable1 = np.append(position2, theta2)
+x_immovable1 = np.append(position2[0:2], theta2)
 
 quat3 = quaternion2array(trans_immovable2.transform.rotation)
 theta3 = quaternion2theta(quat3)
 position3 = position2array(trans_immovable2.transform.translation)
-x_immovable2 = np.append(position3, theta3)
+x_immovable2 = np.append(position3[0:2], theta3)
 
 x_obs = np.r_[[x_movable], [x_immovable1], [x_immovable2]].tolist()
 
@@ -112,7 +113,7 @@ scene_pkl = {'target': {'x': x_init, 'geom': geom_target},
                           'miu': [miu_movable, miu_immovable, miu_immovable],
                           'geom': [geom_movable, geom_immovable, geom_immovable],
                           'A_list': [compute_limit_surface(geom_movable), compute_limit_surface(geom_immovable), compute_limit_surface(geom_immovable)],
-                          'type': [1, 0, 0],  # 0 for immovable, 1 for movable
+                          'type': [0, 0, 0],  # 0 for immovable, 1 for movable
                           'x': x_obs},
              'contact': {'dt': dt_contact}}
 
