@@ -9,6 +9,7 @@ import math
 import numpy as np
 import pandas as pd
 import time
+import datetime
 import casadi as cs
 from matplotlib import patches, transforms
 import matplotlib.pyplot as plt
@@ -56,7 +57,7 @@ class SliderConvertor(object):
         if contact_face in ['+x', '-x']:
             psic_lim = np.arctan2(0.5*yl, 0.5*xl)
         elif contact_face in ['+y', '-y']:
-            psic_lim = np.arctan2(0.5*xl, 0.5*yl)
+            psic_lim = np.arctan2(0.5*xl-0.005, 0.5*yl)
         else:
             raise NotImplementedError('SliderConvertor: contact face {0} not supported!'.format(contact_face))
         return psic_lim
@@ -157,10 +158,13 @@ class SliderConvertor(object):
         contact_face_script = self.path_seg_list[i]['contact_face'][0]  # 'front', 'back', 'left', 'right'
         contact_face = CONTACT_FACE_TO_AXIS[contact_face_script]  # '+x', '-x', '+y', '-y'
 
-        import pdb; pdb.set_trace()
+        import pdb; pdb.set_trace()  # tag: for debug only
 
         # tag: panda control
-        self.ur5_control.ur5_move_to_contact_face(contact_face_script)
+        if i == 0:
+            self.ur5_control.ur5_move_to_contact_face(contact_face_script)
+        else:
+            self.ur5_control.ur5_move_to_contact_face(contact_face_script, god_view_just_lift_up=True)
 
         # get x_init from perception
         x_init = self.ur5_control.ur5_get_state_variable(contact_face_script)
@@ -232,7 +236,7 @@ class SliderConvertor(object):
         x0_last = x_init.copy()
         _rate = rospy.Rate(self.freq)
         # X_opt[:, 0] = x0
-        import pdb; pdb.set_trace()
+        import pdb; pdb.set_trace()  # tag: for debug only
         for idx in range(Nidx-1):
             loop_start_time = time.time()
 
@@ -264,7 +268,7 @@ class SliderConvertor(object):
 
         # tag: panda control
         self.ur5_control.ur5_stop_move()
-        import pdb; pdb.set_trace()
+        import pdb; pdb.set_trace()  # tag: for debug only
 
         p_new = cs.Function('p_new', [dyn.x], [dyn.p(dyn.x, beta)])
         p_map = p_new.map(Nidx)
@@ -308,7 +312,7 @@ class SliderConvertor(object):
             contact_face = CONTACT_FACE_TO_AXIS[contact_face]
             theta_offset = self.get_theta_offset_in_path_frame(contact_face)
 
-            import pdb; pdb.set_trace()
+            import pdb; pdb.set_trace()  # tag: for debug only
             # X_opt[2, :] += theta_offset
 
             if i == 0:
@@ -351,9 +355,13 @@ save_to_file = False
 #  -------------------------------------------------------------------
 dt = 1.0/freq  # sampling time
 #  -------------------------------------------------------------------
+# Select Planning Scene
+#  -------------------------------------------------------------------
+UR5_PLANNING_SCENE = 1
+#  -------------------------------------------------------------------
 
 import pickle
-path_seg = pickle.load(open('/home/roboticslab/jyp/pusher_slider/data/traj/path_seg_ur5.pkl', 'rb'))
+path_seg = pickle.load(open('/home/roboticslab/jyp/pusher_slider/data/traj/saved/path_seg_ur5_#{0}.pkl'.format(UR5_PLANNING_SCENE), 'rb'))
 slider_geom = [
                 tracking_config['dynamics']['xLenght'],
                 tracking_config['dynamics']['yLenght'],
@@ -397,6 +405,20 @@ anim = animation.FuncAnimation(
 anim.save('/home/roboticslab/jyp/pusher_slider/data/video/iros_tracking_push_away1.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 
 plt.show()
+
+# save data
+try:
+    timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M')
+    data_save_path = '/home/roboticslab/jyp/pusher_slider/data/result/' + 'track_ur5_#{0}_'.format(UR5_PLANNING_SCENE) + timestamp
+    data_to_be_saved = {'X_slider': X_slider,
+                        'X_nominal': X_nominal,
+                        'U_slider': U_slider,
+                        'X_pusher': X_pusher,
+                        'X_ahead': X_ahead,
+                        'C_opt': C_opt}
+    pickle.dump(data_to_be_saved, open(data_save_path, 'wb'))
+except:
+    import pdb; pdb.set_trace()  # tag: in case of data save error
 
 exit(0)
 

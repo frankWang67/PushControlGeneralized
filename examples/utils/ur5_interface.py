@@ -324,6 +324,10 @@ class UR5Arm(object):
         success = self.control.moveL(pose_xyz_rvec, speed=speed, acceleration=0.6, asynchronous=asynchronous)
         return success
 
+    def stop_current_move(self):
+        self.control.speedStop(10.0)
+        rospy.loginfo('UR5 has stopped successfully!')
+
 class UR5ControlInterface(object):
     def __init__(self, ur:UR5Arm, tf:tfHandler, beta, dt):
         self.ur = ur
@@ -412,21 +416,27 @@ class UR5ControlInterface(object):
         pusher_phic = self._convert_contact_point_to_psic(contact_point, contact_face)
         return [slider_pos[0], slider_pos[1], slider_theta, pusher_phic]
 
-    def _ur5_goto_god_view(self):
+    def _ur5_goto_god_view(self, god_view_just_lift_up=False):
         """
         Control ur5 to god view
         """
         # lift up to detach the slider
         pose_cur = self.ur.get_pose()
         
-        pose_liftup = pose_cur.copy()
-        if pose_liftup.translation[2] < -0.55:
-            pose_liftup.translation[2] += 2 * contact_point_depth
-            self.ur.goto_pose(pose_liftup)
+        if god_view_just_lift_up:
+            pose_liftup = pose_cur.copy()
+            if pose_liftup.translation[2] < -0.55:
+                pose_liftup.translation[2] += 0.1
+                self.ur.goto_pose(pose_liftup)
+        else:
+            pose_liftup = pose_cur.copy()
+            if pose_liftup.translation[2] < -0.55:
+                pose_liftup.translation[2] += 2 * contact_point_depth
+                self.ur.goto_pose(pose_liftup)
 
-        pos_xyz_rvec_home = GOD_VIEW_XYZ_RVEC
-        pose_rtrans = rvecpose2rtrans(pos_xyz_rvec_home)
-        self.ur.goto_pose(pose_rtrans, use_world_frame=False)
+            pos_xyz_rvec_home = GOD_VIEW_XYZ_RVEC
+            pose_rtrans = rvecpose2rtrans(pos_xyz_rvec_home)
+            self.ur.goto_pose(pose_rtrans, use_world_frame=False)
 
     def _get_ee_pos_in_contact(self, contact_face, get_pre_contact_pos=True):
         """
@@ -438,11 +448,11 @@ class UR5ControlInterface(object):
         else:
             return contact_ee_rel_pos
 
-    def _get_slider_transform_coarse(self):
+    def _get_slider_transform_coarse(self, god_view_just_lift_up=False):
         """
         Get coarse slider pose
         """
-        self._ur5_goto_god_view()
+        self._ur5_goto_god_view(god_view_just_lift_up)
         slider_pos, slider_ori = self.tf.get_slider_position_and_orientation()
         return np.array([slider_pos[0], slider_pos[1], slider_ori]), slider_pos[2]
 
@@ -453,11 +463,11 @@ class UR5ControlInterface(object):
         slider_pos, slider_ori = self.tf.get_slider_position_and_orientation()
         return np.array([slider_pos[0], slider_pos[1], slider_ori]), slider_pos[2]
 
-    def _goto_face_coarse(self, contact_face):
+    def _goto_face_coarse(self, contact_face, god_view_just_lift_up=False):
         """
         Go to contact, based on coarse pose measurement
         """
-        slider_state, slider_height = self._get_slider_transform_coarse()
+        slider_state, slider_height = self._get_slider_transform_coarse(god_view_just_lift_up)
         ee_rel_pos = self._get_ee_pos_in_contact(contact_face, get_pre_contact_pos=True)
         ee_abs_xy = get_desired_end_effector_xy_abs(slider_state, ee_rel_pos)
 
@@ -494,12 +504,12 @@ class UR5ControlInterface(object):
         self.ur.goto_pose(ee_pose_goal_point)
         print('Info: franka arrived at slider finely!')
 
-    def _change_contact_face(self, contact_face):
+    def _change_contact_face(self, contact_face, god_view_just_lift_up=False):
         """
         Change another contact face
         """
         print('Info: change contact face!')
-        self._goto_face_coarse(contact_face)
+        self._goto_face_coarse(contact_face, god_view_just_lift_up)
         self._goto_face_fine(contact_face)
     
     def _get_input_in_slider_frame(self, u, contact_face):
@@ -548,13 +558,14 @@ class UR5ControlInterface(object):
             rospy.logwarn('Failed to control UR5 with velocity {0}!'.format(v_desired))
 
     def _velocity_control_stop(self):
-        success = self.ur.apply_velocity_ee([0., 0.])
-        if not success:
-            rospy.logwarn('Failed to control UR5 with velocity {0}!'.format([0., 0.]))
+        # success = self.ur.apply_velocity_ee([0., 0.])
+        # if not success:
+        #     rospy.logwarn('Failed to control UR5 with velocity {0}!'.format([0., 0.]))
+        self.ur.stop_current_move()
 
     # tag: external function
-    def ur5_move_to_contact_face(self, contact_face):
-        self._change_contact_face(contact_face)
+    def ur5_move_to_contact_face(self, contact_face, god_view_just_lift_up=False):
+        self._change_contact_face(contact_face, god_view_just_lift_up)
 
     # tag: external function
     def ur5_get_state_variable(self, contact_face):
