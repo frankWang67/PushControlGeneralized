@@ -9,7 +9,7 @@ import math
 import numpy as np
 import pandas as pd
 import time
-import datetime
+from datetime import datetime
 import casadi as cs
 from matplotlib import patches, transforms
 import matplotlib.pyplot as plt
@@ -158,7 +158,7 @@ class SliderConvertor(object):
         contact_face_script = self.path_seg_list[i]['contact_face'][0]  # 'front', 'back', 'left', 'right'
         contact_face = CONTACT_FACE_TO_AXIS[contact_face_script]  # '+x', '-x', '+y', '-y'
 
-        import pdb; pdb.set_trace()  # tag: for debug only
+        # import pdb; pdb.set_trace()  # tag: for debug only
 
         # tag: panda control
         if i == 0:
@@ -236,7 +236,7 @@ class SliderConvertor(object):
         x0_last = x_init.copy()
         _rate = rospy.Rate(self.freq)
         # X_opt[:, 0] = x0
-        import pdb; pdb.set_trace()  # tag: for debug only
+        # import pdb; pdb.set_trace()  # tag: for debug only
         for idx in range(Nidx-1):
             loop_start_time = time.time()
 
@@ -268,7 +268,7 @@ class SliderConvertor(object):
 
         # tag: panda control
         self.ur5_control.ur5_stop_move()
-        import pdb; pdb.set_trace()  # tag: for debug only
+        # import pdb; pdb.set_trace()  # tag: for debug only
 
         p_new = cs.Function('p_new', [dyn.x], [dyn.p(dyn.x, beta)])
         p_map = p_new.map(Nidx)
@@ -312,7 +312,7 @@ class SliderConvertor(object):
             contact_face = CONTACT_FACE_TO_AXIS[contact_face]
             theta_offset = self.get_theta_offset_in_path_frame(contact_face)
 
-            import pdb; pdb.set_trace()  # tag: for debug only
+            # import pdb; pdb.set_trace()  # tag: for debug only
             # X_opt[2, :] += theta_offset
 
             if i == 0:
@@ -357,7 +357,7 @@ dt = 1.0/freq  # sampling time
 #  -------------------------------------------------------------------
 # Select Planning Scene
 #  -------------------------------------------------------------------
-UR5_PLANNING_SCENE = 1
+UR5_PLANNING_SCENE = 4
 #  -------------------------------------------------------------------
 
 import pickle
