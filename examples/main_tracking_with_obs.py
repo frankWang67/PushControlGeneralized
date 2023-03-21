@@ -163,13 +163,15 @@ class SliderConvertor(object):
         X_nom[:, 3] = sliding_pack.utils.make_angle_continuous(X_nom[:, 3])
 
         # make sure x0 and x_nom are adjacent on the number line
-        X_nom[:, 2] += sliding_pack.utils.angle_diff(X_nom[0, 2], x_init[2])
+        # X_nom[:, 2] += sliding_pack.utils.angle_diff(X_nom[0, 2], x_init[2])
+        X_nom[:, 2] += x_init[2] - X_nom[0, 2]
         X_nom[:, 2] += theta_offset
         x_init[2] += theta_offset
         
         ## Upsample
         N_nom_pts = len(X_nom)
         if N_nom_pts < self.N_min:
+            import pdb; pdb.set_trace()
             X_nom = sliding_pack.utils.interpolate_path(X_nom, self.N_min)
         Nidx = len(X_nom)
         
@@ -320,7 +322,8 @@ idxDist = 5.*freq
 #  -------------------------------------------------------------------
 
 import pickle
-path_seg = pickle.load(open('/home/yongpeng/research/R3T_shared/data/debug/2023_02_03_16_59/path_seg.pkl', 'rb'))
+timestamp = '2023_02_05_11_24'
+path_seg = pickle.load(open('/home/yongpeng/research/R3T_shared/data/debug/{0}/path_seg.pkl'.format(timestamp), 'rb'))
 slider_geom = [
                 tracking_config['dynamics']['xLenght'],
                 tracking_config['dynamics']['yLenght'],
@@ -331,7 +334,7 @@ solver_opt = {
     'beta': slider_geom,
     'dt': dt,
     'N_min': 25,
-    'N_MPC': 25,
+    'N_MPC': 10,
     'tracking_config': tracking_config,
     'path_seg_list': path_seg,
     'num_path_seg': len(path_seg)
