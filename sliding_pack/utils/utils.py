@@ -3,6 +3,7 @@ import numpy as np
 import os
 import sys
 from scipy.interpolate import interp1d
+from autolab_core import RigidTransform
 
 
 class HiddenPrints:
@@ -38,6 +39,9 @@ def angle_diff(angle1, angle2):
     """
     Calculate the difference (angle2-angle1) ∈ [-pi, pi]
     """
+    # restrict angle in [-pi, pi]
+    angle1 = restrict_angle_in_unit_circle(angle1)
+    angle2 = restrict_angle_in_unit_circle(angle2)
     diff1 = angle2 - angle1
     diff2 = 2 * np.pi - np.abs(diff1)
     if diff1 > 0:
@@ -46,6 +50,23 @@ def angle_diff(angle1, angle2):
         return diff1
     else:
         return diff2
+
+def angle_array_diff(angle_array1, angle_array2):
+    angle_array1 = restrict_angle_in_unit_circle(angle_array1)
+    angle_array2 = restrict_angle_in_unit_circle(angle_array2)
+    diff1 = angle_array2 - angle_array1
+    diff2 = 2 * np.pi - np.abs(diff1)
+    diff = np.empty_like(diff1)
+    diff2[diff1>0] = -diff2[diff1>0]
+    diff[np.abs(diff1)<np.abs(diff2)] = diff1[np.abs(diff1)<np.abs(diff2)]
+    diff[np.abs(diff1)>=np.abs(diff2)] = diff2[np.abs(diff1)>=np.abs(diff2)]
+    return diff
+
+def restrict_angle_in_unit_circle(angle):
+    """
+        restrict angle in [-pi, pi]
+    """
+    return (angle - (-np.pi)) % (2 * np.pi) + (-np.pi)
 
 def make_angle_continuous(angle):
     """
@@ -75,3 +96,6 @@ def interpolate_path(path, N):
     f_interp = interp1d(np.linspace(0., 1., path.shape[0]), path, axis=0)
     ret = f_interp(tau)
     return ret
+
+def make_rigid_transform(translation, rotation, from_frame):
+    return RigidTransform(translation=translation, rotation=rotation, from_frame=from_frame)

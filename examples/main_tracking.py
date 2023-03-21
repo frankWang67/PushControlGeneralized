@@ -12,7 +12,7 @@
 import sys
 import yaml
 import numpy as np
-import pandas as pd
+# import pandas as pd
 import casadi as cs
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -28,12 +28,27 @@ planning_config = sliding_pack.load_config('planning_switch_config.yaml')
 
 # Set Problem constants
 #  -------------------------------------------------------------------
-T = 10  # time of the simulation is seconds
-freq = 25  # number of increments per second
+# T = 10  # time of the simulation is seconds
+T = 30  # time of the simulation is seconds
+
+# freq = 15  # number of increments per second
+freq = 20  # number of increments per second
+
 # N_MPC = 12 # time horizon for the MPC controller
-N_MPC = 25  # time horizon for the MPC controller
+N_MPC = 30  # time horizon for the MPC controller
 # x_init_val = [-0.03, 0.03, 30*(np.pi/180.), 0]
-x_init_val = [0., 0., 45*(np.pi/180.), 0]
+
+## x_traj from real robot exp
+x_traj = np.load('./data/x_traj.npy')
+u_traj = np.load('./data/u_traj.npy')
+
+
+# x_init_val = [0., 0., 0.2*np.pi, 0.]
+x_init_val = [0., 0.0, 0.02*np.pi, 0]
+# x_init_val = [0.4241445, 0.01386, -0.0365, 0.]
+
+# x_init_val = x_traj[:, 0].tolist()
+
 show_anim = True
 save_to_file = False
 #  -------------------------------------------------------------------
@@ -42,7 +57,7 @@ save_to_file = False
 dt = 1.0/freq  # sampling time
 N = int(T*freq)  # total number of iterations
 Nidx = int(N)
-idxDist = 5.*freq
+idxDist = 15.*freq
 # Nidx = 10
 #  -------------------------------------------------------------------
 
@@ -50,7 +65,9 @@ idxDist = 5.*freq
 #  -------------------------------------------------------------------
 dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
         tracking_config['dynamics'],
-        tracking_config['TO']['contactMode']
+        tracking_config['TO']['contactMode'],
+        pusherAngleLim=tracking_config['dynamics']['xFacePsiLimit'],
+        limit_surf_gain=1.
 )
 #  -------------------------------------------------------------------
 
@@ -58,32 +75,38 @@ dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
 #  -------------------------------------------------------------------
 X_goal = tracking_config['TO']['X_goal']
 # print(X_goal)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.35, 0.0, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_sine(0.3, 0.0, 0.05, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
-# x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2, N, N_MPC)
+x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_ellipse(-np.pi/2, 3*np.pi/2, 0.2, 0.1, N, N_MPC)
-x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.3, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.3, N, N_MPC)
+
+## offset nominal traj
+# x0_nom, x1_nom = x0_nom+x_init_val[0], x1_nom+x_init_val[1]
+
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  ------------------------------------------------------------------
 
-
 # Compute nominal actions for sticking contact
 #  ------------------------------------------------------------------
 dynNom = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
         planning_config['dynamics'],
-        planning_config['TO']['contactMode']
+        planning_config['TO']['contactMode'],
+        pusherAngleLim=tracking_config['dynamics']['xFacePsiLimit']
 )
 optObjNom = sliding_pack.to.buildOptObj(
-        dynNom, N+N_MPC, planning_config['TO'], dt=dt)
+        dynNom, N+N_MPC, planning_config['TO'], dt=dt, max_iter=150)
 beta = [
     planning_config['dynamics']['xLenght'],
     planning_config['dynamics']['yLenght'],
     planning_config['dynamics']['pusherRadious']
 ]
 resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(
-        0, [0., 0., 0.*(np.pi/180.), 0.], beta,
+        0, [0., 0., 0.*(np.pi/180.), 0.], beta, [0., 0., 0., 0.],
         X_warmStart=X_nom_val)
 if dyn.Nu > dynNom.Nu:
     U_nom_val_opt = cs.vertcat(
@@ -100,7 +123,7 @@ X_nom_comp = f_rollout([0., 0., 0., 0.], U_nom_val_opt)
 #  -------------------------------------------------------------------
 optObj = sliding_pack.to.buildOptObj(
         dyn, N_MPC, tracking_config['TO'],
-        X_nom_val, None, dt=dt,
+        X_nom_val, None, dt=dt, max_iter=80
 )
 #  -------------------------------------------------------------------
 
@@ -111,6 +134,7 @@ U_plot = np.empty([dyn.Nu, Nidx-1])
 del_plot = np.empty([dyn.Nz, Nidx-1])
 X_plot[:, 0] = x_init_val
 X_future = np.empty([dyn.Nx, N_MPC, Nidx])
+U_future = np.empty([dyn.Nu, N_MPC-1, Nidx])
 comp_time = np.empty((Nidx-1, 1))
 success = np.empty(Nidx-1)
 cost_plot = np.empty((Nidx-1, 1))
@@ -142,30 +166,40 @@ elif optObj.numObs==1:
 #  -------------------------------------------------------------------
 x0 = x_init_val
 for idx in range(Nidx-1):
+    # if idx >= 100:
+    #     break
     print('-------------------------')
     print(idx)
-    # if idx == idxDist:
-    #     print('i died here')
-    #     x0[0] += 0.03
-    #     x0[1] += -0.03
-    #     x0[2] += 30.*(np.pi/180.)
+    if idx == idxDist:
+        print('i died here')
+        x0[0] += 0.0
+        x0[1] += -0.03
+        x0[2] += 0.*(np.pi/180.)
     # ---- solve problem ----
+    # x0 = x_traj[:, idx+1].tolist()
+    X_plot[:, idx+1] = x0
     resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(
-            idx, x0, beta,
+            idx, x0, beta, [0., 0., 0., 0.],
             S_goal_val=S_goal_val,
             obsCentre=obsCentre, obsRadius=obsRadius)
     print(f_opt)
+    # import pdb; pdb.set_trace()
     # ---- update initial state (simulation) ----
     u0 = u_opt[:, 0].elements()
     # x0 = x_opt[:,1].elements()
     x0 = (x0 + dyn.f(x0, u0, beta)*dt).elements()
+
+    ## add noise to x0
+    # x0 = np.array(x0) + np.random.uniform(low=[])
+
     # ---- store values for plotting ----
     comp_time[idx] = t_opt
     success[idx] = resultFlag
     cost_plot[idx] = f_opt
-    X_plot[:, idx+1] = x0
+    # X_plot[:, idx+1] = x0
     U_plot[:, idx] = u0
     X_future[:, :, idx] = np.array(x_opt)
+    U_future[:, :, idx] = np.array(u_opt)
     if dyn.Nz > 0:
         del_plot[:, idx] = del_opt[:, 0].elements()
     # ---- update selection matrix ----
@@ -183,41 +217,41 @@ p_map = p_new.map(N)
 X_pusher_opt = p_map(X_plot)
 #  -------------------------------------------------------------------
 
-if save_to_file:
-    #  Save data to file using pandas
-    #  -------------------------------------------------------------------
-    df_state = pd.DataFrame(
-                    np.concatenate((
-                        np.array(X_nom_val[:, :Nidx]).transpose(),
-                        np.array(X_plot).transpose(),
-                        np.array(X_pusher_opt).transpose()
-                        ), axis=1),
-                    columns=['x_nom', 'y_nom', 'theta_nom', 'psi_nom',
-                             'x_opt', 'y_opt', 'theta_opt', 'psi_opt',
-                             'x_pusher', 'y_pusher'])
-    df_state.index.name = 'idx'
-    df_state.to_csv('tracking_circle_cc_state.csv',
-                    float_format='%.5f')
-    time = np.linspace(0., T, Nidx-1)
-    print('********************')
-    print(U_plot.transpose().shape)
-    print(cost_plot.shape)
-    print(comp_time.shape)
-    print(time.shape)
-    print(time[:, None].shape)
-    df_action = pd.DataFrame(
-                    np.concatenate((
-                        U_plot.transpose(),
-                        time[:, None],
-                        cost_plot,
-                        comp_time
-                        ), axis=1),
-                    columns=['u0', 'u1', 'u3', 'u4',
-                    # columns=['u0', 'u1', 'u3',
-                             'time', 'cost', 'comp_time'])
-    df_action.index.name = 'idx'
-    df_action.to_csv('tracking_circle_cc_action.csv',
-                     float_format='%.5f')
+# if save_to_file:
+#     #  Save data to file using pandas
+#     #  -------------------------------------------------------------------
+#     df_state = pd.DataFrame(
+#                     np.concatenate((
+#                         np.array(X_nom_val[:, :Nidx]).transpose(),
+#                         np.array(X_plot).transpose(),
+#                         np.array(X_pusher_opt).transpose()
+#                         ), axis=1),
+#                     columns=['x_nom', 'y_nom', 'theta_nom', 'psi_nom',
+#                              'x_opt', 'y_opt', 'theta_opt', 'psi_opt',
+#                              'x_pusher', 'y_pusher'])
+#     df_state.index.name = 'idx'
+#     df_state.to_csv('tracking_circle_cc_state.csv',
+#                     float_format='%.5f')
+#     time = np.linspace(0., T, Nidx-1)
+#     print('********************')
+#     print(U_plot.transpose().shape)
+#     print(cost_plot.shape)
+#     print(comp_time.shape)
+#     print(time.shape)
+#     print(time[:, None].shape)
+#     df_action = pd.DataFrame(
+#                     np.concatenate((
+#                 150        U_plot.transpose(),
+#                         time[:, None],
+#                         cost_plot,
+#                         comp_time
+#                         ), axis=1),
+#                     columns=['u0', 'u1', 'u3', 'u4',
+#                     # columns=['u0', 'u1', 'u3',
+#                              'time', 'cost', 'comp_time'])
+#     df_action.index.name = 'idx'
+#     df_action.to_csv('tracking_circle_cc_action.csv',
+#                      float_format='%.5f')
     #  -------------------------------------------------------------------
 
 # Animation
@@ -254,7 +288,7 @@ if show_anim:
             repeat=False,
     )
     # to save animation, uncomment the line below:
-    # ani.save('MPC_MPCC_eight.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    ani.save('./videos/MPC_MPCC_line.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
@@ -320,12 +354,25 @@ for i in range(dyn.Nu):
     axs[2, i].plot(t_Nu, U_nom_val_opt[i, 0:N-1].T, color='blue',
                    linestyle='--', label='plan')
     axs[2, i].plot(t_idx_u, U_plot[i, :], color='orange', label='mpc')
+    # if i == 1:
+    #     axs[2, i].plot(t_idx_u, U_plot[2, :] - U_plot[3, :], color='green', label='dpsic')
     handles, labels = axs[2, i].get_legend_handles_labels()
     axs[2, i].legend(handles, labels)
     axs[2, i].set_xlabel('time [s]')
     axs[2, i].set_ylabel('u%d' % i)
     axs[2, i].grid()
 #  -------------------------------------------------------------------
+
+data_log = {
+    'X_plot': X_plot,
+    'U_plot': U_plot,
+    'X_nom_val': X_nom_val,
+    'X_future': X_future,
+    'U_future': U_future
+}
+
+import pickle
+pickle.dump(data_log, open('./data/tracking_simulation_data.npy', 'wb'))
 
 #  -------------------------------------------------------------------
 plt.show()

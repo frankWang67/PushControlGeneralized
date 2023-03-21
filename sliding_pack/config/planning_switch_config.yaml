@@ -3,10 +3,10 @@
 # 
 
 dynamics:
-    xLenght: 0.07
-    yLenght: 0.12
-    pusherRadious: 0.01 #  [meter]
-    pusherFricCoef: 0.2
+    xLenght: 0.08
+    yLenght: 0.15
+    pusherRadious: 0.007 #  [meter]
+    pusherFricCoef: 0.1
     pusherForceLim:  0.3
     pusherAngleVelLim: 3.0
     Kz_max: 50.
