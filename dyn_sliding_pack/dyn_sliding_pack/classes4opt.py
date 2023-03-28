@@ -3,6 +3,8 @@
 class DynPusherParameters():
     m = None        # [kg] Slider mass
     l = None        # [m] Pusher board width
+    h = None        # [m] Pusher board thickness
+    r = None        # [m] Ball radius
     v_max = None    # [m/s] Maximum pusher linear velocity
     omega_max = None# [rad/s] Maximum pusher angular velocity
     a_max = None    # [m/s^2] Maximum pusher linear acceleration
@@ -36,6 +38,10 @@ class DynPusherOptimizationConfig():
     h = None        # Path equality constraints (g(x(t),u(t)) = 0)
     hi = None       # Initial condition constraints (hi(x(t),u(t)) = 0)
     ht = None       # Terminal condition constraints (ht(x(t),u(t)) = 0)
+
+    # auxiliary functions (for debug)
+    aux_f_ground = None   # ground friction in board frame
+    aux_f_inertia = None  # inertia force in board frame
     
     ## costs
     phi = None      # Terminal cost (ϕ(x(t),u(t)))
