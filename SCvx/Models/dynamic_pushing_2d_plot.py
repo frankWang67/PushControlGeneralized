@@ -11,7 +11,7 @@ __KMaxForceArrowLength = 0.3
 __KMaxVelArrowLength = 0.3
 
 def get_arrow_length(f, f_max, l_max):
-    return l_max * (f / f_max)
+    return l_max * (np.linalg.norm(f) / f_max)
 
 class ResultAnimation():
     def __init__(self, m) -> None:
@@ -112,7 +112,7 @@ def plot_knot_points(m, x, u):
         # plot the ball
         p_ball = xi[0:2] + Ri.dot(xi[3]*np.array([1, 0]))
         p_ball_all[i, :] = p_ball
-        # ax.scatter(p_ball[0], p_ball[1], marker='o', facecolor=cmap(2), edgecolor=(0,0,0,0), s=50)
+        ax.scatter(p_ball[0], p_ball[1], marker='o', facecolor=cmap(2), edgecolor=(0,0,0,0), s=50)
 
         if i % 3 == 0:
             # plot the board as a line
@@ -207,9 +207,56 @@ def plot_statistics(m, x, u, tf):
                 ax.plot(t_grid, ineq_cstr[:, 0], label='ineq{0}'.format(i_item), marker='o', markersize=4, linewidth=2)
                 ax.grid('on'); ax.legend()
 
+    # ------------------------------------
+    
+    # complementary constraints
+    fig = plt.figure(figsize=(6, 3))
+    ax = fig.add_subplot(1, 2, 1)
+    ax.plot(t_grid, m.mu_p * u[:, 0] - u[:, 1], label='mu*fn-ft', marker='o', markersize=4, linewidth=2)
+    ax.plot(t_grid, u[:, 5], label='dx-', marker='o', markersize=4, linewidth=2)
+    ax.grid('on'); ax.legend()
+    ax = fig.add_subplot(1, 2, 2)
+    ax.plot(t_grid, m.mu_p * u[:, 0] + u[:, 1], label='mu*fn+ft', marker='o', markersize=4, linewidth=2)
+    ax.plot(t_grid, u[:, 4], label='dx+', marker='o', markersize=4, linewidth=2)
+    ax.grid('on'); ax.legend()
+
+    plt.show()
+
+def plot_convergence(x, J, L):
+    fig = plt.figure(figsize=(10, 4))
+    
+    N = J.shape[0]
+    assert L.shape[0] == N-1
+
+    # total cost
+    ax = fig.add_subplot(1, 4, 1)
+    ax.plot(np.arange(N), J[:, 2], label='non-linear', marker='o', markersize=4, linewidth=2)
+    ax.plot(np.arange(1, N), L[:, 2], label='linear', marker='o', markersize=4, linewidth=2)
+    ax.grid('on'); ax.legend()
+
+    # dynamic violation
+    ax = fig.add_subplot(1, 4, 2)
+    ax.plot(np.arange(N), J[:, 0], label='non-linear', marker='o', markersize=4, linewidth=2)
+    ax.plot(np.arange(1, N), L[:, 0], label='linear', marker='o', markersize=4, linewidth=2)
+    ax.grid('on'); ax.legend()
+
+    # constraint violation
+    ax = fig.add_subplot(1, 4, 3)
+    ax.plot(np.arange(N), J[:, 1], label='non-linear', marker='o', markersize=4, linewidth=2)
+    ax.plot(np.arange(1, N), L[:, 1], label='linear', marker='o', markersize=4, linewidth=2)
+    ax.grid('on'); ax.legend()
+
+    # solution convergence
+    ax = fig.add_subplot(1, 4, 4)
+    dx_norm = np.linalg.norm((x[:-1, ...] - x[-1, ...]).reshape(N-1, -1), axis=1)
+    ax.plot(np.arange(N-1), dx_norm, marker='o', markersize=4, linewidth=2)
+    ax.set_yscale('log')
+    ax.grid('on'); ax.legend()
+
     plt.show()
 
 
-def plot(m, x, u, tf):
-    plot_statistics(m, x, u, tf)
-    plot_knot_points(m, x, u)
+def plot(m, x, u, tf, J, L):
+    plot_convergence(x, J, L)
+    plot_statistics(m, x[-1].transpose(1, 0), u[-1].transpose(1, 0), tf[-1])
+    plot_knot_points(m, x[-1].transpose(1, 0), u[-1].transpose(1, 0))

@@ -29,6 +29,7 @@ class Model:
     omega_max = 2.0
     a_max = 2.0
     beta_max = 2.0
+    f_min = 0.005  # positive normal force, in case of ball-board seperation
     f_max = 1.0
 
     # environment parameters
@@ -79,7 +80,7 @@ class Model:
         velMass2G = velBoard2G + rotMatB2G * sp.Matrix([x[7, 0], x[6, 0]*x[3, 0]])
         fricGround2G = u[2:4, 0]
         fricGround2B = rotMatB2G.T * fricGround2G
-        inerBoard2B = sp.Matrix([self.m*(x[6, 0]**2)*x[3, 0], -2*self.m*x[6, 0]*x[7, 0]]) - \
+        inerBoard2B = sp.Matrix([self.m*(x[6, 0]**2)*x[3, 0], -2*self.m*x[6, 0]*x[7, 0]-self.m*u[8, 0]*x[3, 0]]) - \
                         self.m * rotMatB2G.T * u[6:8, 0]
 
         f[0:4, 0] = x[4:8, 0]
@@ -195,7 +196,7 @@ class Model:
             -X_v[7, :] <= self.v_max,
 
             # constain the input
-            -U_v[0, :] <= 0.0,
+            -U_v[0, :] <= -self.f_min,
             U_v[0:4, :] <= self.f_max,
             -U_v[1:4, :] <= self.f_max,
             U_v[4:6, :] <= self.v_max,

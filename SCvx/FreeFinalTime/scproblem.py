@@ -143,13 +143,19 @@ class SCProblemDirectEvalPar:
         self.par['S_bar'] = cvx.Parameter((m.n_x, K - 1))
         self.par['z_bar'] = cvx.Parameter((m.n_x, K - 1))
 
-        self.par['D_eq_bar'] = cvx.Parameter((m.n_eq * m.n_x, K))
-        self.par['E_eq_bar'] = cvx.Parameter((m.n_eq * m.n_u, K))
-        self.par['r_eq_bar'] = cvx.Parameter((m.n_eq * 1, K))
+        if m.n_eq > 0:
+            self.par['D_eq_bar'] = cvx.Parameter((m.n_eq * m.n_x, K))
+            self.par['E_eq_bar'] = cvx.Parameter((m.n_eq * m.n_u, K))
+            self.par['r_eq_bar'] = cvx.Parameter((m.n_eq * 1, K))
+        else:
+            self.par['D_eq_bar'], self.par['E_eq_bar'], self.par['r_eq_bar'] = None, None, None
 
-        self.par['D_ineq_bar'] = cvx.Parameter((m.n_ineq * m.n_x, K))
-        self.par['E_ineq_bar'] = cvx.Parameter((m.n_ineq * m.n_u, K))
-        self.par['r_ineq_bar'] = cvx.Parameter((m.n_ineq * 1, K))
+        if m.n_ineq > 0:
+            self.par['D_ineq_bar'] = cvx.Parameter((m.n_ineq * m.n_x, K))
+            self.par['E_ineq_bar'] = cvx.Parameter((m.n_ineq * m.n_u, K))
+            self.par['r_ineq_bar'] = cvx.Parameter((m.n_ineq * 1, K))
+        else:
+            self.par['D_ineq_bar'], self.par['E_ineq_bar'], self.par['r_ineq_bar'] = None, None, None
 
         self.par['X_last'] = cvx.Parameter((m.n_x, K))
         self.par['U_last'] = cvx.Parameter((m.n_u, K))
@@ -203,7 +209,8 @@ class SCProblemDirectEvalPar:
 
         for key in kwargs:
             if key in self.par:
-                self.par[key].value = kwargs[key]
+                if self.par[key] is not None:
+                    self.par[key].value = kwargs[key]
             else:
                 print(f'Parameter \'{key}\' does not exist.')
 
@@ -237,5 +244,6 @@ class SCProblemDirectEvalPar:
             self.prob.solve(**kwargs)
         except cvx.SolverError:
             error = True
+            import pdb; pdb.set_trace()
 
         return error

@@ -155,4 +155,4 @@ if not converged:
 save_arrays('output/trajectory/', {'X': all_X, 'U': all_U, 'sigma': all_sigma})
 
 # plot trajectory
-# plot(all_X, all_U, all_sigma)
+plot(all_X, all_U, all_sigma)

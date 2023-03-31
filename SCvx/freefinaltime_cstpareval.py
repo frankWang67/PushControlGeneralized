@@ -2,6 +2,8 @@
 import warnings
 warnings.filterwarnings('ignore')
 
+import argparse
+
 from time import time
 import numpy as np
 
@@ -10,10 +12,12 @@ from FreeFinalTime.discretization import FirstOrderHold
 from FreeFinalTime.scproblem import SCProblemDirectEvalPar
 from utils import format_line, save_arrays
 
-# from Models.diffdrive_2d import Model
-# from Models.diffdrive_2d_plot import plot
-from Models.dynamic_pushing_2d import Model
-from Models.dynamic_pushing_2d_plot import plot
+# from Models.dynamic_pushing_2d import Model
+# from Models.dynamic_pushing_2d_plot import plot
+
+from Models.dynamic_pushing_3d import Model
+from Models.dynamic_pushing_3d_plot import plot
+
 
 """
 Python implementation of the Successive Convexification algorithm.
@@ -25,9 +29,17 @@ by Michael Szmuk and Behçet Açıkmeşe.
 Implementation by Sven Niederberger (s-niederberger@outlook.com)
 """
 
+
+# ARGUMENTS-------------------------------------------------------------------------------------------------------------
+parser = argparse.ArgumentParser()
+parser.add_argument('--save', action='store_true', default=False, help='Save optimal trajectory or not.')
+parser.add_argument('--plot', action='store_true', default=False, help='Plot optimal trajectory or not.')
+args = parser.parse_args()
+
 m = Model()
 m.nondimensionalize()
 
+"""
 # state and input
 X = np.empty(shape=[m.n_x, K])
 U = np.empty(shape=[m.n_u, K])
@@ -40,9 +52,18 @@ X, U = m.initialize_trajectory(X, U)
 all_X = [m.x_redim(X.copy())]
 all_U = [m.u_redim(U.copy())]
 all_sigma = [sigma]
+all_J = []
+all_L = []
 
 integrator = FirstOrderHold(m, K)
 problem = SCProblemDirectEvalPar(m, K)
+
+# INITIAL NON-LINEAR COST
+X_nl_init = integrator.integrate_nonlinear_piecewise(X, U, sigma)
+nonlinear_cost_dynamics = np.linalg.norm(X - X_nl_init, 1)
+nonlinear_cost_constraints = m.get_nonlinear_cost(X=X, U=U)
+nonlinear_cost = nonlinear_cost_dynamics + nonlinear_cost_constraints
+all_J.append([nonlinear_cost_dynamics, nonlinear_cost_constraints, nonlinear_cost])
 
 last_nonlinear_cost = None
 converged = False
@@ -108,8 +129,10 @@ for it in range(iterations):
         print(format_line('Final time', sigma))
         print('')
 
-        if abs(predicted_change) < 1e-4:
+        if abs(predicted_change) < 9e-5:
             converged = True
+            X = new_X
+            U = new_U
             break
         else:
             rho = actual_change / predicted_change
@@ -146,6 +169,8 @@ for it in range(iterations):
     all_X.append(m.x_redim(X.copy()))
     all_U.append(m.u_redim(U.copy()))
     all_sigma.append(sigma)
+    all_J.append([nonlinear_cost_dynamics, nonlinear_cost_constraints, nonlinear_cost])
+    all_L.append([linear_cost_dynamics, linear_cost_constraints, linear_cost])
 
     if converged:
         print(f'Converged after {it + 1} iterations.')
@@ -154,21 +179,27 @@ for it in range(iterations):
 all_X = np.stack(all_X)
 all_U = np.stack(all_U)
 all_sigma = np.array(all_sigma)
+all_J = np.stack(all_J)
+all_L = np.stack(all_L)
 if not converged:
     print('Maximum number of iterations reached without convergence.')
 
 # save trajectory to file for visualization
-save_arrays('output/trajectory/', {'X': all_X, 'U': all_U, 'sigma': all_sigma})
+if args.save:
+    save_arrays('output/trajectory/', {'X': all_X, 'U': all_U, 'sigma': all_sigma, 'J': all_J, 'L': all_L})
 
 # plot trajectory
-plot(m, all_X[-1].transpose(1, 0), all_U[-1].transpose(1, 0), all_sigma[-1])
+if args.plot:
+    plot(m, all_X, all_U, all_sigma, all_J, all_L)
+    pass
+"""
 
 # plot trajectory (from file)
-"""
-folder_no = 30
+folder_no = 40
 _, _, _ = m.get_equations()
 all_X = np.load('./output/trajectory/0{0}/X.npy'.format(folder_no))
 all_U = np.load('./output/trajectory/0{0}/U.npy'.format(folder_no))
 all_sigma = np.load('./output/trajectory/0{0}/sigma.npy'.format(folder_no))
-plot(m, all_X[-1].transpose(1, 0), all_U[-1].transpose(1, 0), all_sigma[-1])
-"""
+all_J = np.load('./output/trajectory/0{0}/J.npy'.format(folder_no))
+all_L = np.load('./output/trajectory/0{0}/L.npy'.format(folder_no))
+plot(m, all_X, all_U, all_sigma, all_J, all_L)
