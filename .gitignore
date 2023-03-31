@@ -169,4 +169,4 @@ cython_debug/
 #.idea/
 
 # SCvx output data
-./SCvx/output/
+SCvx/output/
