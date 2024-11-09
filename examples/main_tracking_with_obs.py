@@ -17,6 +17,8 @@ import yaml
 import numpy as np
 import pandas as pd
 import casadi as cs
+import matplotlib
+matplotlib.use('TkAgg')
 from matplotlib import patches, transforms
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -171,7 +173,6 @@ class SliderConvertor(object):
         ## Upsample
         N_nom_pts = len(X_nom)
         if N_nom_pts < self.N_min:
-            import pdb; pdb.set_trace()
             X_nom = sliding_pack.utils.interpolate_path(X_nom, self.N_min)
         Nidx = len(X_nom)
         
@@ -229,8 +230,6 @@ class SliderConvertor(object):
             print('u0: ', [u0[0], u0[1], u0[2]-u0[3]])
             print('f_opt: ', f_opt)
 
-        # import pdb; pdb.set_trace()
-
         p_new = cs.Function('p_new', [dyn.x], [dyn.p(dyn.x, beta)])
         p_map = p_new.map(Nidx)
         X_pusher_opt = p_map(np.concatenate((np.array(x_init).reshape(-1,1), X_opt), axis=1)).toarray()[:, 1:]
@@ -273,7 +272,6 @@ class SliderConvertor(object):
             contact_face = CONTACT_FACE_TO_AXIS[contact_face]
             theta_offset = self.get_theta_offset_in_path_frame(contact_face)
 
-            import pdb; pdb.set_trace()
             # X_opt[2, :] += theta_offset
 
             if i == 0:
@@ -322,7 +320,7 @@ idxDist = 5.*freq
 #  -------------------------------------------------------------------
 
 import pickle
-timestamp = '2023_02_05_11_24'
+timestamp = '2023_07_07_09_58'
 path_seg = pickle.load(open('/home/yongpeng/research/R3T_shared/data/debug/{0}/path_seg.pkl'.format(timestamp), 'rb'))
 slider_geom = [
                 tracking_config['dynamics']['xLenght'],
@@ -344,8 +342,6 @@ solver = SliderConvertor(opt=solver_opt)
 X_slider, X_nominal, U_slider, X_pusher, X_ahead, C_opt = \
     solver.solve(x_init=[0.25, 0.05, 0.5*np.pi, 0.])
 
-import pdb; pdb.set_trace()
-
 # plot figures and animation
 fig, ax = sliding_pack.plots.plot_nominal_traj(
     X_nominal[0,:], X_nominal[1,:], plot_title='pushing tracking'
@@ -361,7 +357,7 @@ anim = animation.FuncAnimation(
     blit=True,
     repeat=False
 )
-anim.save('./video/R3T_contact_track.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+anim.save('./video/R3T_contact_track.mp4', fps=25, extra_args=['-vcodec', 'mpeg4'])
 
 plt.show()
 

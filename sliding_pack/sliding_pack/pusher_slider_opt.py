@@ -314,13 +314,15 @@ class buildOptObj():
             self.solver = cs.qpsol('solver', self.solver_name, prob, opts_dict)
         #  -------------------------------------------------------------------
 
-    def solveProblem(self, idx, x0, beta, d_hat,
+    def solveProblem(self, idx, x0, beta, d_hat=None,
                      X_warmStart=None, u_warmStart=None,
                      obsCentre=None, obsRadius=None, S_goal_val=None, X_goal_val=None):
         if self.numObs > 0:
             if self.numObs != len(obsCentre) or self.numObs != len(obsRadius):
                 print("Number of obstacles does not match the config file!", file=sys.stderr)
                 sys.exit()
+        if d_hat is None:
+            d_hat = np.zeros(self.dyn.Nx).tolist()
         # ---- setting parameters ---- 
         p_ = []  # set to empty before reinitialize
         p_ += beta

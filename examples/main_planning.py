@@ -14,6 +14,8 @@ import yaml
 import numpy as np
 import pandas as pd
 import casadi as cs
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 #  -------------------------------------------------------------------
@@ -95,8 +97,6 @@ resultFlag, X_nom_val_opt, U_nom_val_opt, other_opt, _, t_opt = optObj.solveProb
         X_warmStart=X_nom_val,
         obsCentre=obsCentre, obsRadius=obsRadius,
         X_goal_val=X_goal)
-
-import pdb; pdb.set_trace()
 
 f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u, beta)*dt])
 f_rollout = f_d.mapaccum(N-1)

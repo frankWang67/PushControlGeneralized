@@ -14,6 +14,8 @@ import yaml
 import numpy as np
 # import pandas as pd
 import casadi as cs
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 #  -------------------------------------------------------------------
@@ -39,8 +41,8 @@ N_MPC = 30  # time horizon for the MPC controller
 # x_init_val = [-0.03, 0.03, 30*(np.pi/180.), 0]
 
 ## x_traj from real robot exp
-x_traj = np.load('./data/x_traj.npy')
-u_traj = np.load('./data/u_traj.npy')
+# x_traj = np.load('./data/x_traj.npy')
+# u_traj = np.load('./data/u_traj.npy')
 
 
 # x_init_val = [0., 0., 0.2*np.pi, 0.]
@@ -288,7 +290,7 @@ if show_anim:
             repeat=False,
     )
     # to save animation, uncomment the line below:
-    ani.save('./videos/MPC_MPCC_line.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    ani.save('./video/MPC_MPCC_line.mp4', fps=25, extra_args=['-vcodec', 'mpeg4'])
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
