@@ -7,6 +7,9 @@
 #  and sliding contact pusher.
 #  -------------------------------------------------------------------
 
+import os
+r3t_root_dir = os.environ.get("R3T_HOME")
+
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -321,7 +324,7 @@ idxDist = 5.*freq
 
 import pickle
 timestamp = '2023_07_07_09_58'
-path_seg = pickle.load(open('/home/yongpeng/research/R3T_shared/data/debug/{0}/path_seg.pkl'.format(timestamp), 'rb'))
+path_seg = pickle.load(open(os.path.join(r3t_root_dir, 'data', 'debug', '{0}/path_seg.pkl'.format(timestamp)).format(timestamp), 'rb'))
 slider_geom = [
                 tracking_config['dynamics']['xLenght'],
                 tracking_config['dynamics']['yLenght'],
