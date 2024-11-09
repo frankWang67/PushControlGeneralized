@@ -2,11 +2,6 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 
 from autolab_core import RigidTransform
-from frankapy import FrankaArm, SensorDataMessageType
-from frankapy import FrankaConstants as FC
-from frankapy.proto_utils import sensor_proto2ros_msg, make_sensor_group_msg
-from frankapy.proto import PosePositionSensorMessage, ShouldTerminateSensorMessage, CartesianImpedanceSensorMessage
-from franka_interface_msgs.msg import SensorDataGroup
 
 from sliding_pack.utils.utils import *
 
