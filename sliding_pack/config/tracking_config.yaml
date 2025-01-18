@@ -3,8 +3,14 @@
 # 
 
 dynamics:
-    xLenght: 0.08 #  [meter]
-    yLenght: 0.15 #  [meter]
+    control_points: [
+        [0.04, 0.0], [0.04, 0.08], [0.0, 0.08], [-0.04, 0.08], [-0.04, 0.0], [-0.04, -0.08], [0.0, -0.08], [0.04, -0.08], [0.04, 0.0]
+    ] # [meter]
+    # control_points: [
+    #     [0.04, 0.0], [0.0, 0.08], [-0.04, 0.0], [0.0, -0.08], [0.04, 0.0]
+    # ] # [meter]
+    x_len: 0.08
+    y_len: 0.16
     pusherRadious: 0.007 #  [meter]
     pusherFricCoef: 0.1
     pusherForceLim:  0.3

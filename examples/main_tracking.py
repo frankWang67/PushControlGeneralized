@@ -9,11 +9,11 @@
 
 #  import libraries
 #  -------------------------------------------------------------------
-import sys
-import yaml
+import time
 import numpy as np
 # import pandas as pd
 import casadi as cs
+import scipy.interpolate as spi
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
@@ -25,7 +25,7 @@ import sliding_pack
 # Get config files
 #  -------------------------------------------------------------------
 tracking_config = sliding_pack.load_config('tracking_config.yaml')
-planning_config = sliding_pack.load_config('planning_switch_config.yaml')
+# planning_config = sliding_pack.load_config('planning_switch_config.yaml')
 #  -------------------------------------------------------------------
 
 # Set Problem constants
@@ -45,11 +45,15 @@ N_MPC = 30  # time horizon for the MPC controller
 # u_traj = np.load('./data/u_traj.npy')
 
 
+x_init_val = [0.0, 0.0, 0.0, 0.0]
 # x_init_val = [0., 0., 0.2*np.pi, 0.]
-x_init_val = [0., 0.0, 0.02*np.pi, 0]
+# x_init_val = [0., 0.0, 0.02*np.pi, 0]
+# x_init_val = [0.0, 0.0, 0.0, np.pi]
 # x_init_val = [0.4241445, 0.01386, -0.0365, 0.]
 
 # x_init_val = x_traj[:, 0].tolist()
+
+psic_offset = np.pi
 
 show_anim = True
 save_to_file = False
@@ -59,14 +63,48 @@ save_to_file = False
 dt = 1.0/freq  # sampling time
 N = int(T*freq)  # total number of iterations
 Nidx = int(N)
-idxDist = 15.*freq
+# idxDist = 15.*freq
 # Nidx = 10
+#  -------------------------------------------------------------------
+
+# define slider
+#  -------------------------------------------------------------------
+control_points = tracking_config['dynamics']['control_points']
+control_points = np.array(control_points)
+tck, _ = spi.splprep([control_points[:, 0], control_points[:, 1]], s=0, per=True)
+
+# Parameters for the B-spline
+knots = tck[0]
+coeffs = tck[1]
+degree = tck[2]
+
+# Define the B-spline
+t = cs.SX.sym('t')
+curve_func = sliding_pack.bspline.get_bspline_func(t, knots, coeffs, degree)
+tangent_func, normal_func = sliding_pack.bspline.get_tangent_normal_func(t, knots, coeffs, degree)
+
+# #  -------------------------------------------------------------------
+# control_points_nom = planning_config['dynamics']['control_points']
+# control_points_nom = np.array(control_points_nom)
+# tck_nom, _ = spi.splprep([control_points_nom[:, 0], control_points_nom[:, 1]], s=0, per=True)
+
+# # Parameters for the B-spline
+# knots_nom = tck_nom[0]
+# coeffs_nom = tck_nom[1]
+# degree_nom = tck_nom[2]
+
+# # Define the B-spline
+# curve_func_nom = sliding_pack.bspline.get_bspline_func(t, knots_nom, coeffs_nom, degree_nom)
+# tangent_func_nom, normal_func_nom = sliding_pack.bspline.get_tangent_normal_func(t, knots_nom, coeffs_nom, degree_nom)
 #  -------------------------------------------------------------------
 
 # define system dynamics
 #  -------------------------------------------------------------------
 dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
         tracking_config['dynamics'],
+        curve_func,
+        tangent_func,
+        normal_func,
         tracking_config['TO']['contactMode'],
         pusherAngleLim=tracking_config['dynamics']['xFacePsiLimit'],
         limit_surf_gain=1.
@@ -81,7 +119,9 @@ X_goal = tracking_config['TO']['X_goal']
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_sine(0.3, 0.0, 0.05, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
+
 x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2, N, N_MPC)
+
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_ellipse(-np.pi/2, 3*np.pi/2, 0.2, 0.1, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.3, N, N_MPC)
 
@@ -90,41 +130,55 @@ x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2
 
 #  -------------------------------------------------------------------
 # stack state and derivative of state
-X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
-#  ------------------------------------------------------------------
 
+X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, x_init_val[2], dt)
+
+#  ------------------------------------------------------------------
+print("`compute_nomState_from_nomTraj` done")
 # Compute nominal actions for sticking contact
 #  ------------------------------------------------------------------
-dynNom = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
-        planning_config['dynamics'],
-        planning_config['TO']['contactMode'],
-        pusherAngleLim=tracking_config['dynamics']['xFacePsiLimit']
-)
-optObjNom = sliding_pack.to.buildOptObj(
-        dynNom, N+N_MPC, planning_config['TO'], dt=dt, max_iter=150)
+# dynNom = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
+#         planning_config['dynamics'],
+#         curve_func_nom,
+#         tangent_func_nom,
+#         normal_func_nom,
+#         planning_config['TO']['contactMode'],
+#         pusherAngleLim=tracking_config['dynamics']['xFacePsiLimit']
+# )
+# print("`Sys_sq_slider_quasi_static_ellip_lim_surf` done")
+# optObjNom = sliding_pack.to.buildOptObj(
+#         dynNom, N+N_MPC, planning_config['TO'], dt=dt, max_iter=150)
+# print("`buildOptObj` done")
+# beta = [
+#     planning_config['dynamics']['x_len'],
+#     planning_config['dynamics']['y_len'],
+#     planning_config['dynamics']['pusherRadious']
+# ]
 beta = [
-    planning_config['dynamics']['xLenght'],
-    planning_config['dynamics']['yLenght'],
-    planning_config['dynamics']['pusherRadious']
+    tracking_config['dynamics']['x_len'],
+    tracking_config['dynamics']['y_len'],
+    tracking_config['dynamics']['pusherRadious']
 ]
-resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(
-        0, [0., 0., 0.*(np.pi/180.), 0.], beta, [0., 0., 0., 0.],
-        X_warmStart=X_nom_val)
-if dyn.Nu > dynNom.Nu:
-    U_nom_val_opt = cs.vertcat(
-            U_nom_val_opt,
-            cs.DM.zeros(np.abs(dyn.Nu - dynNom.Nu), N+N_MPC-1))
-elif dynNom.Nu > dyn.Nu:
-    U_nom_val_opt = U_nom_val_opt[:dyn.Nu, :]
-f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u, beta)*dt])
-f_rollout = f_d.mapaccum(N+N_MPC-1)
-X_nom_comp = f_rollout([0., 0., 0., 0.], U_nom_val_opt)
+# print("`solveProblem` start")
+# resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(
+#         0, [0., 0., 0.*(np.pi/180.), 0.], beta, [0., 0., 0., 0.],
+#         X_warmStart=X_nom_val)
+# print("`solveProblem` done")
+# if dyn.Nu > dynNom.Nu:
+#     U_nom_val_opt = cs.vertcat(
+#             U_nom_val_opt,
+#             cs.DM.zeros(np.abs(dyn.Nu - dynNom.Nu), N+N_MPC-1))
+# elif dynNom.Nu > dyn.Nu:
+#     U_nom_val_opt = U_nom_val_opt[:dyn.Nu, :]
+# f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u, beta)*dt])
+# f_rollout = f_d.mapaccum(N+N_MPC-1)
+# X_nom_comp = f_rollout([0., 0., 0., 0.], U_nom_val_opt)
 #  ------------------------------------------------------------------
 
 # define optimization problem
 #  -------------------------------------------------------------------
 optObj = sliding_pack.to.buildOptObj(
-        dyn, N_MPC, tracking_config['TO'],
+        dyn, N_MPC, tracking_config['TO'], psic_offset, 
         X_nom_val, None, dt=dt, max_iter=80
 )
 #  -------------------------------------------------------------------
@@ -167,29 +221,39 @@ elif optObj.numObs==1:
 # Set arguments and solve
 #  -------------------------------------------------------------------
 x0 = x_init_val
+
+# import pdb
+# pdb.set_trace()
+# exit(0)
+
 for idx in range(Nidx-1):
     # if idx >= 100:
     #     break
     print('-------------------------')
     print(idx)
-    if idx == idxDist:
-        print('i died here')
-        x0[0] += 0.0
-        x0[1] += -0.03
-        x0[2] += 0.*(np.pi/180.)
+    # if idx == idxDist:
+    #     print('i died here')
+    #     x0[0] += 0.0
+    #     x0[1] += -0.03
+    #     x0[2] += 0.*(np.pi/180.)
     # ---- solve problem ----
     # x0 = x_traj[:, idx+1].tolist()
     X_plot[:, idx+1] = x0
+    # U_warmStart = cs.GenDM_zeros(dyn.Nu, N_MPC-1)
+    # U_warmStart[0, :] = 1.0
+    U_warmStart = None
     resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(
             idx, x0, beta, [0., 0., 0., 0.],
-            S_goal_val=S_goal_val,
+            U_warmStart=U_warmStart, S_goal_val=S_goal_val,
             obsCentre=obsCentre, obsRadius=obsRadius)
-    print(f_opt)
+    print(f"{f_opt=}")
     # import pdb; pdb.set_trace()
     # ---- update initial state (simulation) ----
     u0 = u_opt[:, 0].elements()
     # x0 = x_opt[:,1].elements()
+    x0[-1] += psic_offset
     x0 = (x0 + dyn.f(x0, u0, beta)*dt).elements()
+    x0[-1] -= psic_offset
 
     ## add noise to x0
     # x0 = np.array(x0) + np.random.uniform(low=[])
@@ -200,6 +264,8 @@ for idx in range(Nidx-1):
     cost_plot[idx] = f_opt
     # X_plot[:, idx+1] = x0
     U_plot[:, idx] = u0
+    x_opt = np.array(x_opt)
+    x_opt[:, -1] += psic_offset
     X_future[:, :, idx] = np.array(x_opt)
     U_future[:, :, idx] = np.array(u_opt)
     if dyn.Nz > 0:
@@ -212,6 +278,8 @@ for idx in range(Nidx-1):
         print(S_goal_val)
         # sys.exit()
 #  -------------------------------------------------------------------
+X_nom_val[-1, :] += psic_offset
+X_plot[-1, :] += psic_offset
 # show sparsity pattern
 # sliding_pack.plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xu_opt)
 p_new = cs.Function('p_new', [dyn.x], [dyn.p(dyn.x, beta)])
@@ -264,10 +332,10 @@ if show_anim:
     fig, ax = sliding_pack.plots.plot_nominal_traj(
                 x0_nom[:Nidx], x1_nom[:Nidx], plot_title='')
     # add computed nominal trajectory
-    X_nom_val_opt = np.array(X_nom_val_opt)
+    # X_nom_val_opt = np.array(X_nom_val_opt)
     # ax.plot(X_nom_val_opt[0, :], X_nom_val_opt[1, :], color='blue',
     #         linewidth=2.0, linestyle='dashed')
-    X_nom_comp = np.array(X_nom_comp)
+    # X_nom_comp = np.array(X_nom_comp)
     # ax.plot(X_nom_comp[0, :], X_nom_comp[1, :], color='green',
     #         linewidth=2.0, linestyle='dashed')
     # add obstacles
@@ -278,7 +346,7 @@ if show_anim:
     # set window size
     fig.set_size_inches(8, 6, forward=True)
     # get slider and pusher patches
-    dyn.set_patches(ax, X_plot, beta)
+    dyn.set_patches(ax, X_plot, beta, curve_func)
     # call the animation
     ani = animation.FuncAnimation(
             fig,
@@ -290,7 +358,9 @@ if show_anim:
             repeat=False,
     )
     # to save animation, uncomment the line below:
-    ani.save('./video/MPC_MPCC_line.mp4', fps=25, extra_args=['-vcodec', 'mpeg4'])
+    # name the file with date and time
+    file_name = './video/circle_test_' + time.strftime("%Y%m%d-%H%M%S") + '.mp4'
+    ani.save(file_name, fps=25, extra_args=['-vcodec', 'mpeg4'])
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
@@ -308,8 +378,8 @@ ctrl_g_val = ctrl_g_idx(U_plot, del_plot)
 for i in range(dyn.Nx):
     axs[0, i].plot(t_Nx, X_nom_val[i, 0:N].T, color='red',
                    linestyle='--', label='nom')
-    axs[0, i].plot(t_Nx, X_nom_val_opt[i, 0:N].T, color='blue',
-                   linestyle='--', label='plan')
+    # axs[0, i].plot(t_Nx, X_nom_val_opt[i, 0:N].T, color='blue',
+    #                linestyle='--', label='plan')
     axs[0, i].plot(t_idx_x, X_plot[i, :], color='orange', label='mpc')
     handles, labels = axs[0, i].get_legend_handles_labels()
     axs[0, i].legend(handles, labels)
@@ -353,8 +423,8 @@ axs[1, 3].grid()
 #  -------------------------------------------------------------------
 # plot actions
 for i in range(dyn.Nu):
-    axs[2, i].plot(t_Nu, U_nom_val_opt[i, 0:N-1].T, color='blue',
-                   linestyle='--', label='plan')
+    # axs[2, i].plot(t_Nu, U_nom_val_opt[i, 0:N-1].T, color='blue',
+    #                linestyle='--', label='plan')
     axs[2, i].plot(t_idx_u, U_plot[i, :], color='orange', label='mpc')
     # if i == 1:
     #     axs[2, i].plot(t_idx_u, U_plot[2, :] - U_plot[3, :], color='green', label='dpsic')
@@ -374,8 +444,10 @@ data_log = {
 }
 
 import pickle
-pickle.dump(data_log, open('./data/tracking_simulation_data.npy', 'wb'))
+pickle.dump(data_log, open('./data/tracking_sim_data_' + time.strftime("%Y%m%d-%H%M%S") + '.npy', 'wb'))
 
 #  -------------------------------------------------------------------
+# Save and show plots
+plt.savefig('./data/tracking_exp_' + time.strftime("%Y%m%d-%H%M%S") + '.png')
 plt.show()
 #  -------------------------------------------------------------------

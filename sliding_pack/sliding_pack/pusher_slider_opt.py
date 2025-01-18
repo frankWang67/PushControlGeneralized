@@ -18,10 +18,12 @@ import sliding_pack
 
 class buildOptObj():
 
-    def __init__(self, dyn_class, timeHorizon, configDict, X_nom_val=None,
+    def __init__(self, dyn_class, timeHorizon, configDict, psic_offset=0.0, X_nom_val=None,
                  U_nom_val=None, dt=0.1, useGoalFlag=False, max_iter=None):
 
         # init parameters
+        print('**** Initialize the optimization problem ****')
+
         self.dyn = dyn_class
         self.TH = timeHorizon
         self.solver_name = configDict['solverName']
@@ -34,13 +36,19 @@ class buildOptObj():
             self.X_nom_val = cs.DM.zeros(self.dyn.Nx, self.TH)
         else:
             self.X_nom_val = X_nom_val
-        self.U_nom_val = U_nom_val
+        if U_nom_val is None:
+            self.U_nom_val = cs.DM.zeros(self.dyn.Nu, self.TH-1)
+        else:
+            self.U_nom_val = U_nom_val
         self.useGoalFlag = useGoalFlag
         self.solverName = configDict['solverName']
         self.linDyn = configDict['linDynFlag']
         self.code_gen = configDict['codeGenFlag']
         self.no_printing = configDict['noPrintingFlag']
         self.phases = configDict['phases']
+
+        self.x_bias = cs.SX.zeros(self.dyn.Nx)
+        self.x_bias[-1] = psic_offset
 
         # opt var dimensionality
         self.Nxu = self.dyn.Nx + self.dyn.Nu
@@ -78,6 +86,8 @@ class buildOptObj():
             self.U = cs.SX.sym('U', self.dyn.Nu, self.TH-1)
             # define vars for deviation from nominal path
             self.X_bar = self.X - self.X_nom
+            # normalize angles
+            # self.X_bar[2, :] = cs.fmod(cs.fabs(self.X_bar[2, :]), 2*cs.pi) - cs.pi
         # initial state
         self.x0 = cs.SX.sym('x0', self.dyn.Nx)
         if self.phases is None:
@@ -99,6 +109,8 @@ class buildOptObj():
         # constraint functions
         #  -------------------------------------------------------------------
         # ---- Define Dynamic constraints ----
+        print("**** Building the optimization problem ****")
+
         __x_bar = cs.SX.sym('x_bar', self.dyn.Nx)
         if self.linDyn:
             # define gradients of the dynamic
@@ -151,6 +163,8 @@ class buildOptObj():
         #  -------------------------------------------------------------------
 
         # ---- Set optimization variables ----
+        print('**** Set optimization variables ****')
+
         if self.linDyn:
             for i in range(self.TH-1):
                 # ---- Add States to optimization variables ---
@@ -195,36 +209,48 @@ class buildOptObj():
             self.opt.discrete += [self.dyn.z_discrete]*self.dyn.Nz
 
         # ---- Set optimzation constraints ----
+        print('**** Set optimization constraints ****')
+
         self.opt.g = (self.X[:, 0]-self.x0).elements()  # Initial Conditions
         self.args.lbg = [0.0]*self.dyn.Nx
         self.args.ubg = [0.0]*self.dyn.Nx
         # ---- Dynamic constraints ---- 
+        print("-- Dynamic constraints --")
         if self.linDyn:
+            print("F_error calculation started")
+            start_time = time.time()
             self.opt.g += self.F_error(
-                    self.X_nom[:, :-1], self.U_nom,
-                    self.X_bar[:, :-1], self.X_bar[:, 1:],
+                    self.X_nom[:, :-1] + self.x_bias, self.U_nom,
+                    self.X_bar[:, :-1] + self.x_bias, self.X_bar[:, 1:] + self.x_bias,
                     self.U_bar,
                     self.dyn.beta).elements()
+            print(f"F_error calculation ended, time taken: {time.time()-start_time} seconds")
         else:
+            print("F_error calculation started")
+            start_time = time.time()
             self.opt.g += self.F_error(
-                    self.X[:, :-1], self.U, 
-                    self.X[:, 1:],
+                    self.X[:, :-1] + self.x_bias, self.U, 
+                    self.X[:, 1:] + self.x_bias,
                     self.dyn.beta,
                     self.d_hat).elements()
+            print(f"F_error calculation ended, time taken: {time.time()-start_time} seconds")
         self.args.lbg += [0.] * self.dyn.Nx * (self.TH-1)
         self.args.ubg += [0.] * self.dyn.Nx * (self.TH-1)
         # ---- Friction constraints ----
+        print("-- Friction constraints --")
         self.opt.g += self.G_u(self.U, self.Z).elements()
         self.args.lbg += self.dyn.g_lb * (self.TH-1)
         self.args.ubg += self.dyn.g_ub * (self.TH-1)
         if self.linDyn:
             # ---- Action constraints
+            print("-- Action constraints --")
             for i in range(self.TH-1):
                 self.opt.g += self.U[:, i].elements()
                 self.args.lbg += self.dyn.lbu
                 self.args.ubg += self.dyn.ubu
 
         # ---- Add constraints for obstacle avoidance ----
+        print("-- Obstacle avoidance constraints --")
         if self.numObs > 0:
             obsC = cs.SX.sym('obsC', 2, self.numObs)
             obsR = cs.SX.sym('obsR', self.numObs)
@@ -235,6 +261,7 @@ class buildOptObj():
                     self.args.ubg += [cs.inf]
 
         # ---- optimization cost ----
+        print('**** Set optimization cost ****')
         if self.useGoalFlag:
             self.S_goal = cs.SX.sym('s', self.TH-1)
             self.X_goal_var = cs.SX.sym('x_goal_var', self.dyn.Nx)
@@ -247,6 +274,8 @@ class buildOptObj():
             self.opt.f += cs.sum1(self.Kz*(self.Z[i].T**2))
 
         # ---- Set optimization parameters ----
+        print('**** Set optimization parameters ****')
+
         self.opt.p = []
         self.opt.p += self.dyn.beta.elements()
         self.opt.p += self.x0.elements()
@@ -291,11 +320,11 @@ class buildOptObj():
         if self.solver_name == 'gurobi':
             if self.no_printing: opts_dict['gurobi.OutputFlag'] = 0
         # ---- Create solver ----
-        # print('************************')
-        # print(len(self.opt.x))
-        # print(len(self.opt.g))
-        # print(len(self.opt.p))
-        # print('************************')
+        print('**** Create solver *****')
+        print(len(self.opt.x))
+        print(len(self.opt.g))
+        print(len(self.opt.p))
+        print('************************')
         prob = {'f': self.opt.f,
                 'x': cs.vertcat(*self.opt.x),
                 'g': cs.vertcat(*self.opt.g),
@@ -315,7 +344,7 @@ class buildOptObj():
         #  -------------------------------------------------------------------
 
     def solveProblem(self, idx, x0, beta, d_hat=None,
-                     X_warmStart=None, u_warmStart=None,
+                     X_warmStart=None, U_warmStart=None,
                      obsCentre=None, obsRadius=None, S_goal_val=None, X_goal_val=None):
         if self.numObs > 0:
             if self.numObs != len(obsCentre) or self.numObs != len(obsRadius):
@@ -326,7 +355,7 @@ class buildOptObj():
         # ---- setting parameters ---- 
         p_ = []  # set to empty before reinitialize
         p_ += beta
-        print(beta)
+        # print(f"{beta=}")
         p_ += x0
         p_ += self.X_nom_val[:, idx:(idx+self.TH)].elements()
         p_ += d_hat
@@ -353,13 +382,19 @@ class buildOptObj():
         if X_warmStart is not None:
             for i in range(self.TH-1):
                 self.args.x0 += X_warmStart[:, i].elements()
-                self.args.x0 += [0.0]*self.dyn.Nu
+                if U_warmStart is not None:
+                    self.args.x0 += U_warmStart[:, i].elements()
+                else:
+                    self.args.x0 += [0.0]*self.dyn.Nu
             self.args.x0 += X_warmStart[:, -1].elements()
-            print(len(self.args.x0))
+            # print(len(self.args.x0))
         else:
             for i in range(self.TH-1):
                 self.args.x0 += self.X_nom_val[:, i].elements()
-                self.args.x0 += [0.0]*self.dyn.Nu
+                if U_warmStart is not None:
+                    self.args.x0 += U_warmStart[:, i].elements()
+                else:
+                    self.args.x0 += [0.0]*self.dyn.Nu
             self.args.x0 += self.X_nom_val[:, -1].elements()
         for i in range(self.Nphases):
             self.args.x0 += self.dyn.z0

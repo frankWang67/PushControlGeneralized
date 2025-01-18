@@ -13,6 +13,7 @@ tikz_schematics/*
 *.c
 *.so
 data/
+log
 __pycache__
 
 # Byte-compiled / optimized / DLL files
