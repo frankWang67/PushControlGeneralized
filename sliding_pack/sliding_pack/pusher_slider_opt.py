@@ -332,6 +332,8 @@ class buildOptObj():
                 }
         # ---- add discrete flag ----
         opts_dict['discrete'] = self.opt.discrete  # add integer variables
+        # ---- fix the NaN bug ----
+        opts_dict['calc_lam_p'] = False
         if (self.solver_name == 'ipopt') or (self.solver_name == 'snopt') or (self.solver_name == 'knitro'):
             self.solver = cs.nlpsol('solver', self.solver_name, prob, opts_dict)
             if self.code_gen:

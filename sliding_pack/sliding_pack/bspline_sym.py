@@ -153,15 +153,18 @@ if __name__ == "__main__":
     from scipy.interpolate import splprep
     import matplotlib.pyplot as plt
 
-    # control_points = np.array([
-    #     [1, 0], [1, 0.5], [1, 1], [0.5, 1], [0, 1],
-    #     [-0.5, 1], [-1, 1], [-1, 0.5], [-1, 0],
-    #     [-1, -0.5], [-1, -1], [-0.5, -1], [0, -1],
-    #     [0.5, -1], [1, -1], [1, -0.5]
-    # ])
     control_points = np.array([
-        [1, 0], [0, 1], [-1, 0], [0, -1]
+        [1, 0], [1, 0.5], [1, 1], [0.5, 1], [0, 1],
+        [-0.5, 1], [-1, 1], [-1, 0.5], [-1, 0],
+        [-1, -0.5], [-1, -1], [-0.5, -1], [0, -1],
+        [0.5, -1], [1, -1], [1, -0.5]
     ])
+    # control_points = np.array([
+    #     [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]
+    # ])
+    # control_points = np.array([
+    #     [1, 0], [0, 1], [-1, 0], [0, -1]
+    # ])
     control_points = np.vstack([control_points, control_points[0]])
 
     tck, _ = splprep(control_points.T, s=0, per=True)
@@ -177,7 +180,7 @@ if __name__ == "__main__":
     pt_vals = np.array([bspline_func(t_val) for t_val in t_vals])
 
 
-    psic = -0.07955592
+    psic = 2.4120658763999705
     t_ = psic_to_t(psic)
     pt = bspline_func(t_)
     tangent = tangent_func(t_)
