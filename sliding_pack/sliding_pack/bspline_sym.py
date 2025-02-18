@@ -38,18 +38,18 @@ def get_bspline_curve(t, knots, coeffs, degree):
 
     Parameters
     ----------
-    `t` : `cs.SX`
+    `t` : `cs.MX`
         The parameter variable
     `knots` : `np.ndarray`
         The knot vector
-    `coeffs` : `list` of `cs.SX`
+    `coeffs` : `list` of `cs.MX`
         The control points coefficients matrix, each column is a dimension
     `degree` : `int`
         The degree of the spline
     
     Returns
     -------
-    `cs.SX`
+    `cs.MX`
         The coordinates of the interpolated points
     """
     dims = len(coeffs)  # number of dimensions
@@ -65,11 +65,11 @@ def get_bspline_func(t, knots, coeffs, degree):
 
     Parameters
     ----------
-    `t` : `cs.SX`
+    `t` : `cs.MX`
         The parameter variable
     `knots` : `np.ndarray`
         The knot vector
-    `coeffs` : `list` of `cs.SX`
+    `coeffs` : `list` of `cs.MX`
         The control points coefficients matrix, each column is a dimension
     `degree` : `int`
         The degree of the spline
@@ -87,18 +87,18 @@ def get_tangent_normal(t, knots, coeffs, degree):
 
     Parameters
     ----------
-    `t` : `cs.SX`
+    `t` : `cs.MX`
         The parameter variable
     `knots` : `np.ndarray`
         The knot vector
-    `coeffs` : `list` of `cs.SX`
+    `coeffs` : `list` of `cs.MX`
         The control points coefficients matrix, each column is a dimension
     `degree` : `int`
         The degree of the spline
     
     Returns
     -------
-    `cs.SX`, `cs.SX`
+    `cs.MX`, `cs.MX`
         The tangent and normal vectors
     """
     curve = get_bspline_curve(t, knots, coeffs, degree)
@@ -113,11 +113,11 @@ def get_tangent_normal_func(t, knots, coeffs, degree):
 
     Parameters
     ----------
-    `t` : `cs.SX`
+    `t` : `cs.MX`
         The parameter variable
     `knots` : `np.ndarray`
         The knot vector
-    `coeffs` : `list` of `cs.SX`
+    `coeffs` : `list` of `cs.MX`
         The control points coefficients matrix, each column is a dimension
     `degree` : `int`
         The degree of the spline
@@ -136,12 +136,12 @@ def psic_to_t(psic):
 
     Parameters
     ----------
-    `psic` : `cs.SX`
+    `psic` : `cs.MX`
         The azimuth angle
     
     Returns
     -------
-    `cs.SX`
+    `cs.MX`
         The parameter
     """
     psic = cs.fmod(psic, 2 * cs.pi)
@@ -174,8 +174,11 @@ if __name__ == "__main__":
     knots = tck[0] 
     coeffs = tck[1] 
     degree = tck[2] 
+    print(f"knots: {knots}")
+    print(f"coeffs: {coeffs}")
+    print(f"degree: {degree}")
 
-    t = cs.SX.sym('t')
+    t = cs.MX.sym('t')
     bspline_func = get_bspline_func(t, knots, coeffs, degree)
     tangent_func, normal_func = get_tangent_normal_func(t, knots, coeffs, degree)
     

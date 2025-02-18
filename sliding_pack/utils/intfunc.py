@@ -27,11 +27,11 @@ quad_np = lambda sq_side: integrate.quad(lambda var: var**2,
 # Fixed step Runge-Kutta 4 integrator
 M = 4  # RK4 steps per interval
 N = 4  # number of control intervals
-sLenght = cs.SX.sym('sLenght')
-xLenght = cs.SX.sym('xLenght')
-yLenght = cs.SX.sym('yLenght')
-x = cs.SX.sym('x')
-y = cs.SX.sym('y')
+sLenght = cs.MX.sym('sLenght')
+xLenght = cs.MX.sym('xLenght')
+yLenght = cs.MX.sym('yLenght')
+x = cs.MX.sym('x')
+y = cs.MX.sym('y')
 DX = xLenght/(N*M)
 DY = yLenght/(N*M)
 # -------------------------------------------------------------------
@@ -86,16 +86,16 @@ def in_contour(x, y, spline_func):
 
     Parameters
     ----------
-    x : cs.SX
+    x : cs.MX
         The x coordinate of the point
-    y : cs.SX
+    y : cs.MX
         The y coordinate of the point
     spline_func : cs.Function
         The B-spline function
 
     Returns
     -------
-    cs.SX
+    cs.MX
         1 if the point is inside the B-spline, 0 otherwise
     """
     theta = cs.atan2(y, x)  # Calculate the angle of the point
@@ -115,11 +115,11 @@ def RungeKutta4_Integrator(g, x_len, y_len, return_func_name):
     ----------
     g : cs.Function
         The integrand function
-    pts : cs.SX
+    pts : cs.MX
         The vertices of the polygon
-    x_len : cs.SX
+    x_len : cs.MX
         The length of the x axis
-    y_len : cs.SX
+    y_len : cs.MX
         The length of the y axis
     return_func_name : str
         The name of the function to return

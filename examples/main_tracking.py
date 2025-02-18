@@ -71,17 +71,18 @@ Nidx = int(N)
 #  -------------------------------------------------------------------
 control_points = tracking_config['dynamics']['control_points']
 control_points = np.array(control_points)
-tck, _ = spi.splprep([control_points[:, 0], control_points[:, 1]], s=0, per=True)
+curve = sliding_pack.bspline.bspline_curve(control_points)
+# tck, _ = spi.splprep([control_points[:, 0], control_points[:, 1]], s=0, per=True)
 
-# Parameters for the B-spline
-knots = tck[0]
-coeffs = tck[1]
-degree = tck[2]
+# # Parameters for the B-spline
+# knots = tck[0]
+# coeffs = tck[1]
+# degree = tck[2]
 
-# Define the B-spline
-t = cs.SX.sym('t')
-curve_func = sliding_pack.bspline.get_bspline_func(t, knots, coeffs, degree)
-tangent_func, normal_func = sliding_pack.bspline.get_tangent_normal_func(t, knots, coeffs, degree)
+# # Define the B-spline
+# t = cs.MX.sym('t')
+# curve_func = sliding_pack.bspline.get_bspline_func(t, knots, coeffs, degree)
+# tangent_func, normal_func = sliding_pack.bspline.get_tangent_normal_func(t, knots, coeffs, degree)
 
 # #  -------------------------------------------------------------------
 # control_points_nom = planning_config['dynamics']['control_points']
@@ -102,9 +103,7 @@ tangent_func, normal_func = sliding_pack.bspline.get_tangent_normal_func(t, knot
 #  -------------------------------------------------------------------
 dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
         tracking_config['dynamics'],
-        curve_func,
-        tangent_func,
-        normal_func,
+        curve,
         tracking_config['TO']['contactMode'],
         pusherAngleLim=tracking_config['dynamics']['xFacePsiLimit'],
         limit_surf_gain=1.
@@ -346,7 +345,7 @@ if show_anim:
     # set window size
     fig.set_size_inches(8, 6, forward=True)
     # get slider and pusher patches
-    dyn.set_patches(ax, X_plot, beta, curve_func)
+    dyn.set_patches(ax, X_plot, beta, curve.curve_func)
     # call the animation
     ani = animation.FuncAnimation(
             fig,

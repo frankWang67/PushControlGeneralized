@@ -21,10 +21,8 @@ import sliding_pack
 
 class Sys_sq_slider_quasi_static_ellip_lim_surf():
 
-    def __init__(self, configDict, curve_func, tangent_func, normal_func, contactMode='sticking', contactFace='-x', pusherAngleLim=0., limit_surf_gain=1.):
-        self.curve_func = curve_func
-        self.tangent_func = tangent_func
-        self.normal_func = normal_func
+    def __init__(self, configDict, curve, contactMode='sticking', contactFace='-x', pusherAngleLim=0., limit_surf_gain=1.):
+        self.curve = curve
 
         # init parameters
         self.mode = contactMode
@@ -43,7 +41,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         self.Radius = 0.05
         
         self.Nbeta = 3
-        self.beta = cs.SX.sym('beta', self.Nbeta)
+        self.beta = cs.MX.sym('beta', self.Nbeta)
         # beta[0] - xl
         # beta[1] - yl
         # beta[2] - r_pusher
@@ -74,81 +72,83 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         # x[1] - y slider CoM position in the global frame
         # x[2] - slider orientation in the global frame
         # x[3] - angle of pusher relative to slider
-        self.x = cs.SX.sym('x', self.Nx)
+        self.x = cs.MX.sym('x', self.Nx)
         # dx - derivative of the state vector
-        self.dx = cs.SX.sym('dx', self.Nx)
+        self.dx = cs.MX.sym('dx', self.Nx)
         #  -------------------------------------------------------------------
 
         # auxiliar symbolic variables
         # used to compute the symbolic representation for variables
         # -------------------------------------------------------------------
         # x - state vector
-        __x_slider = cs.SX.sym('__x_slider')  # in global frame [m]
-        __y_slider = cs.SX.sym('__y_slider')  # in global frame [m]
-        __theta = cs.SX.sym('__theta')  # in global frame [rad]
-        __psi = cs.SX.sym('__psi')  # in relative frame [rad]
+        __x_slider = cs.MX.sym('__x_slider')  # in global frame [m]
+        __y_slider = cs.MX.sym('__y_slider')  # in global frame [m]
+        __theta = cs.MX.sym('__theta')  # in global frame [rad]
+        __psi = cs.MX.sym('__psi')  # in relative frame [rad]
         __x = cs.veccat(__x_slider, __y_slider, __theta, __psi)
         # u - control vector
-        __f_norm = cs.SX.sym('__f_norm')  # in local frame [N]
-        __f_tan = cs.SX.sym('__f_tan')  # in local frame [N]
+        __f_norm = cs.MX.sym('__f_norm')  # in local frame [N]
+        __f_tan = cs.MX.sym('__f_tan')  # in local frame [N]
         # rel vel between pusher and slider [rad/s]
-        __psi_dot = cs.SX.sym('__psi_dot')
+        __psi_dot = cs.MX.sym('__psi_dot')
         __u = cs.veccat(__f_norm, __f_tan, __psi_dot)
         # beta - dynamic parameters
-        __xl = cs.SX.sym('__xl')  # slider x lenght
-        __yl = cs.SX.sym('__yl')  # slider y lenght
-        __r_pusher = cs.SX.sym('__r_pusher')  # radious of the cilindrical pusher
+        __xl = cs.MX.sym('__xl')  # slider x lenght
+        __yl = cs.MX.sym('__yl')  # slider y lenght
+        __r_pusher = cs.MX.sym('__r_pusher')  # radious of the cilindrical pusher
         __beta = cs.veccat(__xl, __yl, __r_pusher)
 
         # system model
         # -------------------------------------------------------------------
         # Rotation matrix
-        __Area = sliding_pack.integral.spline_area(__xl, __yl, self.curve_func)(__xl, __yl)
-        __int_Area = sliding_pack.integral.spline_cs(__xl, __yl, self.curve_func)(__xl, __yl)
-        __c = __int_Area/__Area # ellipsoid approximation ratio
-        self.c = cs.Function('c', [__beta], [__c], ['b'], ['c'])
-        __A = cs.SX.sym('__A', cs.Sparsity.diag(3))
-        __A[0,0] = __A[1,1] = 1.; __A[2,2] = 1./(__c**2)
+        # __Area = sliding_pack.integral.spline_area(__xl, __yl, self.curve.curve_func)(__xl, __yl)
+        # __int_Area = sliding_pack.integral.spline_cs(__xl, __yl, self.curve.curve_func)(__xl, __yl)
+        # __c = __int_Area/__Area # ellipsoid approximation ratio
+        # self.c = cs.Function('c', [__beta], [__c], ['b'], ['c'])
+        # __A = cs.SX.sym('__A', cs.Sparsity.diag(3))
+        __A = cs.MX.zeros(3, 3)
+        # __A[0,0] = __A[1,1] = 1.; __A[2,2] = 1./(__c**2)
+        __A[0,0] = __A[1,1] = 1.; __A[2,2] = curve.get_curvature()
         __A = self.limit_surf_gain * __A
         self.A = cs.Function('A', [__beta], [__A], ['b'], ['A'])
         __ctheta = cs.cos(__theta)
         __stheta = cs.sin(__theta)
-        __R = cs.SX(3, 3)  # anti-clockwise rotation matrix (from {Slider} to {World})
+        __R = cs.MX.zeros(3, 3)  # anti-clockwise rotation matrix (from {Slider} to {World})
         __R[0,0] = __ctheta; __R[0,1] = -__stheta; __R[1,0] = __stheta; __R[1,1] = __ctheta; __R[2,2] = 1.0
         #  -------------------------------------------------------------------
         self.R = cs.Function('R', [__x], [__R], ['x'], ['R'])  # (rotation matrix from {Slider} to {World})
         #  -------------------------------------------------------------------
-        __p = cs.SX.sym('p', 2) # pusher position
+        __p = cs.MX.sym('p', 2) # pusher position
         __rc_prov = cs.mtimes(__R[0:2,0:2].T, __p - __x[0:2])  # (Real {Pusher Center} in {Slider})
         #  -------------------------------------------------------------------
         # slider frame ({x} forward, {y} left)
         # slider position
         # if self.face == '-x':
 
-        t = sliding_pack.bspline.psic_to_t(__psi)
-        contact_point = self.curve_func(t)
+        t = self.curve.psic_to_t(__psi)
+        contact_point = self.curve.curve_func(t)
         __xc = contact_point[0]  # ({Contact Point} in {Slider})
         __yc = contact_point[1]  # ({Contact Point} in {Slider})
-        tangent_vec = self.tangent_func(t)
-        normal_vec = self.normal_func(t)
+        tangent_vec = self.curve.tangent_func(t)
+        normal_vec = self.curve.normal_func(t)
         # `normal_vec` is the normal vector of the shape contour pointing inwards
-        __rc = cs.SX(2,1); __rc[0] = __xc-__r_pusher*normal_vec[0]; __rc[1] = __yc-__r_pusher*normal_vec[1]  # ({Pusher Center} in {Slider})
+        __rc = cs.MX(2,1); __rc[0] = __xc-__r_pusher*normal_vec[0]; __rc[1] = __yc-__r_pusher*normal_vec[1]  # ({Pusher Center} in {Slider})
         #  -------------------------------------------------------------------
         # __psi_prov = -cs.atan2(__rc_prov[1], __xl/2)  # (Real {φ_c})
         __psi_prov = cs.atan2(__rc_prov[0], __rc_prov[1])  # (Real {φ_c})
         # elif self.face == '+x':
         #     __xc = __xl/2; __yc = __xl/2*cs.tan(__psi)  # ({Contact Point} in {Slider})
-        #     __rc = cs.SX(2,1); __rc[0] = __xc+__r_pusher; __rc[1] = __yc  # ({Pusher Center} in {Slider})
+        #     __rc = cs.MX(2,1); __rc[0] = __xc+__r_pusher; __rc[1] = __yc  # ({Pusher Center} in {Slider})
         #     #  -------------------------------------------------------------------
         #     __psi_prov = -cs.atan2(__rc_prov[1], -__xl/2)  # (Real {φ_c})
         # elif self.face == '-y' or self.face == '+y':
         #     __xc = -(__yl/2)/cs.tan(__psi) if np.abs(__psi - 0.5 * np.pi) > 1e-3 else 0.; __yc = -__yl/2  # ({Contact Point} in {Slider})
-        #     __rc = cs.SX(2,1); __rc[0] = __xc; __rc[1] = __yc-__r_pusher  # ({Pusher Center} in {Slider})
+        #     __rc = cs.MX(2,1); __rc[0] = __xc; __rc[1] = __yc-__r_pusher  # ({Pusher Center} in {Slider})
         #     #  -------------------------------------------------------------------
         #     __psi_prov = -cs.atan2(__yl/2, __rc_prov[0]) + cs.pi  # (Real {φ_c})
         # else:
         #     __xc = (__yl/2)/cs.tan(__psi) if np.abs(__psi + 0.5 * np.pi) > 1e-3 else 0.; __yc = __yl/2  # ({Contact Point} in {Slider})
-        #     __rc = cs.SX(2,1); __rc[0] = __xc; __rc[1] = __yc+__r_pusher  # ({Pusher Center} in {Slider})
+        #     __rc = cs.MX(2,1); __rc[0] = __xc; __rc[1] = __yc+__r_pusher  # ({Pusher Center} in {Slider})
         #     #  -------------------------------------------------------------------
         #     __psi_prov = -cs.atan2(-__yl/2, __rc_prov[0]) - cs.pi  # (Real {φ_c})
             
@@ -165,7 +165,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         #  -------------------------------------------------------------------
         
         # dynamics
-        __Jc = cs.SX(2,3)
+        __Jc = cs.MX(2,3)
         # if self.face == '-x':
         __Jc[0,0] = 1; __Jc[1,1] = 1; __Jc[0,2] = -__yc; __Jc[1,2] = __xc;  # contact jacobian
         # elif self.face == '+x':
@@ -177,7 +177,8 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         
         self.RAJc = cs.Function('RAJc', [__x,__beta], [cs.mtimes(cs.mtimes(__R, __A), __Jc.T)], ['x', 'b'], ['f'])
         __force = tangent_vec * __f_tan + normal_vec * __f_norm
-        __f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(__R,__A),cs.mtimes(__Jc.T, __force)),__u[2]))
+        __f = cs.MX(cs.vertcat(cs.mtimes(cs.mtimes(__R,__A),cs.mtimes(__Jc.T, __force)),__u[2]))
+        # __f = cs.MX(cs.vertcat(cs.mtimes(cs.mtimes(__R,__A), cs.DM([1, 1, 1])),__u[2]))
         #  -------------------------------------------------------------------
         self.f_ = cs.Function('f_', [__x,__u,__beta], [__f], ['x', 'u', 'b'], ['f'])  # compute (f(x, u)) from state variables, input variables and slider geometry
         #  -------------------------------------------------------------------
@@ -192,14 +193,14 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             # u[2] - rel sliding vel between pusher and slider counterclockwise(φ_c(-))
             # u[3] - rel sliding vel between pusher and slider clockwise(φ_c(+))
             self.Nu = 4  # number of action variables
-            self.u = cs.SX.sym('u', self.Nu)
+            self.u = cs.MX.sym('u', self.Nu)
             self.Nz = 0
             self.z0 = []
             self.lbz = []
             self.ubz = []
             # discrete extra variable
             self.z_discrete = False
-            empty_var = cs.SX.sym('empty_var')
+            empty_var = cs.MX.sym('empty_var')
             self.g_u = cs.Function('g_u', [self.u, empty_var], [cs.vertcat(
                 # friction cone edges
                 self.miu*self.u[0]+self.u[1],  # lambda(+)>=0
@@ -214,7 +215,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             # cost gain for extra variable
             __Ks_max = self.Kz_max
             __Ks_min = self.Kz_min
-            __i_th = cs.SX.sym('__i_th')
+            __i_th = cs.MX.sym('__i_th')
             self.kz_f = cs.Function('ks', [__i_th], [__Ks_max * cs.exp(__i_th * cs.log(__Ks_min / __Ks_max))])  # decrease from Ks_max to Ks_min
             # state and acton limits
             #  -------------------------------------------------------------------
@@ -233,9 +234,9 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             # u[2] - rel sliding vel between pusher and slider counterclockwise
             # u[3] - rel sliding vel between pusher and slider clockwise
             self.Nu = 4  # number of action variables
-            self.u = cs.SX.sym('u', self.Nu)
+            self.u = cs.MX.sym('u', self.Nu)
             self.Nz = 2
-            self.z = cs.SX.sym('z', self.Nz)
+            self.z = cs.MX.sym('z', self.Nz)
             self.z0 = [1.]*self.Nz
             self.lbz = [-cs.inf]*self.Nz
             self.ubz = [cs.inf]*self.Nz
@@ -255,7 +256,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             # cost gain for extra variable
             __Ks_max = self.Kz_max
             __Ks_min = self.Kz_min
-            __i_th = cs.SX.sym('__i_th')
+            __i_th = cs.MX.sym('__i_th')
             self.kz_f = cs.Function('ks', [__i_th], [__Ks_max * cs.exp(__i_th * cs.log(__Ks_min / __Ks_max))])
             # state and acton limits
             #  -------------------------------------------------------------------
@@ -273,9 +274,9 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             # u[1] - tangential force in the local frame
             # u[2] - rel sliding vel between pusher and slider
             self.Nu = 3  # number of action variables
-            self.u = cs.SX.sym('u', self.Nu)
+            self.u = cs.MX.sym('u', self.Nu)
             self.Nz = 3
-            self.z = cs.SX.sym('z', self.Nz)
+            self.z = cs.MX.sym('z', self.Nz)
             self.z0 = [0]*self.Nz
             self.lbz = [0]*self.Nz
             self.ubz = [1]*self.Nz
@@ -294,7 +295,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             )], ['u', 'other'], ['g'])
             self.g_lb = [0., 0., -cs.inf, -cs.inf, 0., -cs.inf, 1.]
             self.g_ub = [cs.inf, cs.inf, 0., 0., cs.inf, 0., 1.]
-            __i_th = cs.SX.sym('__i_th')
+            __i_th = cs.MX.sym('__i_th')
             self.kz_f = cs.Function('ks', [__i_th], [0.])
             # state and acton limits
             #  -------------------------------------------------------------------
@@ -311,8 +312,8 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             # u[0] - normal force in the local frame
             # u[1] - tangential force in the local frame
             self.Nu = 2  # number of action variables
-            self.u = cs.SX.sym('u', self.Nu)
-            empty_var = cs.SX.sym('empty_var')
+            self.u = cs.MX.sym('u', self.Nu)
+            empty_var = cs.MX.sym('empty_var')
             self.g_u = cs.Function('g_u', [self.u, empty_var], [cs.vertcat(
                 self.miu*self.u[0]+self.u[1],  # friction cone edge
                 self.miu*self.u[0]-self.u[1]  # friction cone edge
@@ -394,7 +395,7 @@ if __name__  == "__main__":
     degree = tck[2]
 
     # Define the B-spline
-    t = cs.SX.sym('t')
+    t = cs.MX.sym('t')
     curve_func = sliding_pack.bspline.get_bspline_func(t, knots, coeffs, degree)
     tangent_func, normal_func = sliding_pack.bspline.get_tangent_normal_func(t, knots, coeffs, degree)
 

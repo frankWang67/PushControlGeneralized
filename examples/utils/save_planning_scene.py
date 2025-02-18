@@ -50,9 +50,9 @@ def quaternion2theta(quat):
     return R.from_quat(quat).as_euler('xyz')[2]
 
 def compute_limit_surface(geom):
-    __geom = cs.SX.sym('geom', 2)
+    __geom = cs.MX.sym('geom', 2)
     __c = rect_cs(__geom[0], __geom[1])/(__geom[0]*__geom[1])
-    __A = cs.SX.sym('__A', cs.Sparsity.diag(3))
+    __A = cs.MX.sym('__A', cs.Sparsity.diag(3))
     __A[0,0] = __A[1,1] = 1.; __A[2,2] = 1./(__c**2)
     A = cs.Function('A', [__geom], [__A])
     lim_surf_A_obs = A(geom).toarray()
