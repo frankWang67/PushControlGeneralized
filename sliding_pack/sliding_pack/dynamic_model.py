@@ -106,9 +106,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         # __c = __int_Area/__Area # ellipsoid approximation ratio
         # self.c = cs.Function('c', [__beta], [__c], ['b'], ['c'])
         # __A = cs.SX.sym('__A', cs.Sparsity.diag(3))
-        __A = cs.MX.zeros(3, 3)
-        # __A[0,0] = __A[1,1] = 1.; __A[2,2] = 1./(__c**2)
-        __A[0,0] = __A[1,1] = 1.; __A[2,2] = curve.get_curvature()
+        __A = cs.MX(self.curve.lim_surf_A)
         __A = self.limit_surf_gain * __A
         self.A = cs.Function('A', [__beta], [__A], ['b'], ['A'])
         __ctheta = cs.cos(__theta)

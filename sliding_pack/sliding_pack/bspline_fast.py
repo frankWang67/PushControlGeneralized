@@ -29,6 +29,8 @@ class bspline_curve:
         self.tangent_func = cs.Function('tangent_func', [t], [tangent])
         self.normal_func = cs.Function('normal_func', [t], [normal])
 
+        self.lim_surf_A = np.diag([1.0, 1.0, self.get_curvature()])
+
     def psic_to_t(self, psic):
         """
         Convert the azimuth angle to the parameter of the B-spline curve.

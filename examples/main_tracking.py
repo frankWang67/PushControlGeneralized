@@ -72,31 +72,6 @@ Nidx = int(N)
 control_points = tracking_config['dynamics']['control_points']
 control_points = np.array(control_points)
 curve = sliding_pack.bspline.bspline_curve(control_points)
-# tck, _ = spi.splprep([control_points[:, 0], control_points[:, 1]], s=0, per=True)
-
-# # Parameters for the B-spline
-# knots = tck[0]
-# coeffs = tck[1]
-# degree = tck[2]
-
-# # Define the B-spline
-# t = cs.MX.sym('t')
-# curve_func = sliding_pack.bspline.get_bspline_func(t, knots, coeffs, degree)
-# tangent_func, normal_func = sliding_pack.bspline.get_tangent_normal_func(t, knots, coeffs, degree)
-
-# #  -------------------------------------------------------------------
-# control_points_nom = planning_config['dynamics']['control_points']
-# control_points_nom = np.array(control_points_nom)
-# tck_nom, _ = spi.splprep([control_points_nom[:, 0], control_points_nom[:, 1]], s=0, per=True)
-
-# # Parameters for the B-spline
-# knots_nom = tck_nom[0]
-# coeffs_nom = tck_nom[1]
-# degree_nom = tck_nom[2]
-
-# # Define the B-spline
-# curve_func_nom = sliding_pack.bspline.get_bspline_func(t, knots_nom, coeffs_nom, degree_nom)
-# tangent_func_nom, normal_func_nom = sliding_pack.bspline.get_tangent_normal_func(t, knots_nom, coeffs_nom, degree_nom)
 #  -------------------------------------------------------------------
 
 # define system dynamics
@@ -133,7 +108,6 @@ x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2
 X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, x_init_val[2], dt)
 
 #  ------------------------------------------------------------------
-print("`compute_nomState_from_nomTraj` done")
 # Compute nominal actions for sticking contact
 #  ------------------------------------------------------------------
 # dynNom = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
