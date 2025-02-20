@@ -40,33 +40,33 @@ m_max = miu_g*m*g*int_A/A # limit torque Newton meter
 # x[1] - y slider CoM position in the global frame
 # x[2] - slider orientation in the global frame
 # x[3] - angle of pusher relative to slider
-x = cs.SX.sym('x', 4)
+x = cs.MX.sym('x', 4)
 # u - control vector
 # u[0] - normal force in the local frame
 # u[1] - tangential force in the local frame
 # u[2] - relative sliding velocity between pusher and slider
-u = cs.SX.sym('u', 3)
+u = cs.MX.sym('u', 3)
 #  -------------------------------------------------------------------
 
 ## Build Motion Model
 #  -------------------------------------------------------------------
 c = m_max/f_max
-L = cs.SX.sym('L', cs.Sparsity.diag(3))
+L = cs.MX.sym('L', cs.Sparsity.diag(3))
 L[0,0] = L[1,1] = 1; L[2,2] = 1/(c**2);
 ctheta = cs.cos(x[2]); stheta = cs.sin(x[2])
-R = cs.SX(3,3)
+R = cs.MX(3,3)
 R[0,0] = ctheta; R[0,1] = -stheta; R[1,0] = stheta; R[1,1] = ctheta; R[2,2] = 1;
 R_func = cs.Function('R', [x], [R])
 xc = -a/2; yc = (a/2)*cs.sin(x[3])
-Jc = cs.SX(2,3)
+Jc = cs.MX(2,3)
 Jc[0,0] = 1; Jc[1,1] = 1; Jc[0,2] = -yc; Jc[1,2] = xc;
-B = cs.SX(Jc.T)
+B = cs.MX(Jc.T)
 #  -------------------------------------------------------------------
-rc = cs.SX(2,1); rc[0] = xc-r_pusher; rc[1] = yc
+rc = cs.MX(2,1); rc[0] = xc-r_pusher; rc[1] = yc
 p_pusher = cs.mtimes(R[0:2,0:2], rc)[0:2] + x[0:2]
 p_pusher_func = cs.Function('p_pusher', [x], [p_pusher])
 #  -------------------------------------------------------------------
-f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(R,L),cs.mtimes(B,u[0:2])),u[2]))
+f = cs.MX(cs.vertcat(cs.mtimes(cs.mtimes(R,L),cs.mtimes(B,u[0:2])),u[2]))
 f_func = cs.Function('f', [x,u], [f])
 #  -------------------------------------------------------------------
 
@@ -76,7 +76,7 @@ f_func = cs.Function('f', [x,u], [f])
 u_const = [0.05, 0.0, 0.0]
 x0 = [0, 0, 0*(np.pi/180), 0]
 #  -------------------------------------------------------------------
-t = cs.SX.sym('t')
+t = cs.MX.sym('t')
 dae = {'x':x, 't':t, 'ode': f_func(x, u_const)}
 ts = np.linspace(0, T, N)
 F = cs.integrator('F', 'cvodes', dae, {'grid':ts, 'output_t0':True})

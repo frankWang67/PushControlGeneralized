@@ -27,6 +27,7 @@ from sliding_pack.sliding_pack import classes4opt as opt
 
 from sliding_pack.sliding_pack import pusher_slider_opt as to
 
+from sliding_pack.sliding_pack import bspline_fast as bspline
 
 
 def load_config(filename):

@@ -33,8 +33,8 @@ class buildDDPOptObj():
         self.beta = dyn_class.beta
         self.beta_value = None
         
-        self.W_x = cs.diag(cs.SX(configDict['W_x']))
-        self.W_u = cs.diag(cs.SX(configDict['W_u'][:3]))
+        self.W_x = cs.diag(cs.MX(configDict['W_x']))
+        self.W_u = cs.diag(cs.MX(configDict['W_u'][:3]))
         self.W_x_arr = np.diag(configDict['W_x'])
         self.W_u_arr = np.diag(configDict['W_u'][:3])
         self.gamma_u = cs.DM(cs.diag(configDict['gamma_u']))
@@ -70,16 +70,16 @@ class buildDDPOptObj():
         # auxiliar symbolic variables
         # -------------------------------------------------------------------
         # dx - state vector
-        __dx = cs.SX.sym('x', 4)
+        __dx = cs.MX.sym('x', 4)
         # du - control vector
-        __du = cs.SX.sym('u', 3)
+        __du = cs.MX.sym('u', 3)
         # [1, dx, du] - concat input vector
-        __dxu = cs.SX(8, 1)
+        __dxu = cs.MX(8, 1)
         __dxu[0, 0] = 1
         __dxu[1:5, 0] = __dx
         __dxu[5:, 0] = __du
         # nominal state
-        __nom_x = cs.SX.sym('nom_x', 4)
+        __nom_x = cs.MX.sym('nom_x', 4)
         
         #  -------------------------------------------------------------------
         __cost_l = cs.Function(
@@ -111,8 +111,8 @@ class buildDDPOptObj():
             ['VN']
         )
 
-        __Vx = cs.SX.sym('_Vx', 4, 1)
-        __Vxx = cs.SX.sym('_Vxx', 4, 4)
+        __Vx = cs.MX.sym('_Vx', 4, 1)
+        __Vxx = cs.MX.sym('_Vxx', 4, 4)
         __VNx = cs.gradient(self.VN(self.dyn.x, __nom_x), self.dyn.x)
         __VNxx = cs.hessian(self.VN(self.dyn.x, __nom_x), self.dyn.x)[0]
 

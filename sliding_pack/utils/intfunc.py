@@ -27,11 +27,11 @@ quad_np = lambda sq_side: integrate.quad(lambda var: var**2,
 # Fixed step Runge-Kutta 4 integrator
 M = 4  # RK4 steps per interval
 N = 4  # number of control intervals
-sLenght = cs.SX.sym('sLenght')
-xLenght = cs.SX.sym('xLenght')
-yLenght = cs.SX.sym('yLenght')
-x = cs.SX.sym('x')
-y = cs.SX.sym('y')
+sLenght = cs.MX.sym('sLenght')
+xLenght = cs.MX.sym('xLenght')
+yLenght = cs.MX.sym('yLenght')
+x = cs.MX.sym('x')
+y = cs.MX.sym('y')
 DX = xLenght/(N*M)
 DY = yLenght/(N*M)
 # -------------------------------------------------------------------
@@ -74,3 +74,89 @@ for ny in range(N):
         yy += (k1_y + 2*k2_y + 2*k3_y + k4_y)/6
 rect_cs = cs.Function('rect_cs', [xLenght, yLenght], [Q])
 square_cs = cs.Function('square_cs', [sLenght], [rect_cs(sLenght, sLenght)])
+
+# -------------------------------------------------------------------
+# 2D casadi integration of g
+# integrand g'=f(x, y)
+# integrate sqrt(x^2+y^2) dxdy for (x, y) in a B-spline
+# h equals to DX and DY for x and y separately
+def in_contour(x, y, spline_func):
+    """
+    Check if a point is inside a B-spline using CasADi's SX symbols
+
+    Parameters
+    ----------
+    x : cs.MX
+        The x coordinate of the point
+    y : cs.MX
+        The y coordinate of the point
+    spline_func : cs.Function
+        The B-spline function
+
+    Returns
+    -------
+    cs.MX
+        1 if the point is inside the B-spline, 0 otherwise
+    """
+    theta = cs.atan2(y, x)  # Calculate the angle of the point
+    negative = cs.if_else(theta < 0, 1, 0)  # Check if the angle is negative
+    theta = cs.if_else(negative, theta + 2*cs.pi, theta)  # Normalize the angle
+    t = theta/(2*cs.pi)  # Normalize the angle to [0, 1]
+    pt = spline_func(t)  # Evaluate the B-spline at the normalized angle
+    inside = cs.le(cs.sqrt(x ** 2 + y ** 2), cs.norm_2(pt))  # Check if the point is inside the B-spline
+    
+    return inside
+
+def RungeKutta4_Integrator(g, x_len, y_len, return_func_name):
+    """
+    Runge-Kutta 4 integrator inside an area
+
+    Parameters
+    ----------
+    g : cs.Function
+        The integrand function
+    pts : cs.MX
+        The vertices of the polygon
+    x_len : cs.MX
+        The length of the x axis
+    y_len : cs.MX
+        The length of the y axis
+    return_func_name : str
+        The name of the function to return
+
+    Returns
+    ----------
+    cs.Function
+        The integration function
+    """
+    Q = 0  # initialize cost
+    yy = -y_len/2  # initialize initial cond
+    for ny in range(N):
+        for my in range(M):
+            xx = -x_len/2
+            for nx in range(N):
+                for mx in range(M):
+                    k1_x, k1_y, k1_q = g(xx, yy)
+                    k2_x, k2_y, k2_q = g(xx + k1_x/2, yy + k1_y/2)
+                    k3_x, k3_y, k3_q = g(xx + k2_x/2, yy + k2_y/2)
+                    k4_x, k4_y, k4_q = g(xx + k3_x, yy + k3_y)
+                    Q += (k1_q + 2*k2_q + 2*k3_q + k4_q)/6
+                    xx += (k1_x + 2*k2_x + 2*k3_x + k4_x)/6
+            yy += (k1_y + 2*k2_y + 2*k3_y + k4_y)/6
+    
+    integ_func = cs.Function(return_func_name, [x_len, y_len], [Q])
+    return integ_func
+
+def spline_area(x_len, y_len, spline_func):
+    DX = x_len/(N*M)
+    DY = y_len/(N*M)
+    g = cs.Function('h_ext', [x, y], [DX, DY, in_contour(x, y, spline_func)*DX*DY])
+
+    return RungeKutta4_Integrator(g, x_len, y_len, 'poly_area')
+
+def spline_cs(x_len, y_len, spline_func):
+    DX = x_len/(N*M)
+    DY = y_len/(N*M)
+    g = cs.Function('h_ext', [x, y], [DX, DY, in_contour(x, y, spline_func)*cs.sqrt((x**2)+(y**2))*DX*DY])
+
+    return RungeKutta4_Integrator(g, x_len, y_len, 'poly_cs')

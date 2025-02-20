@@ -3,8 +3,11 @@
 # 
 
 dynamics:
-    xLenght: 0.07
-    yLenght: 0.12
+    control_points: [
+        [0.03, 0.0], [0.03, 0.06], [0.0, 0.06], [-0.03, 0.06], [-0.03, 0.0], [-0.03, -0.06], [0.0, -0.06], [0.03, -0.06], [0.03, 0.0]
+    ] # [meter]
+    x_len: 0.06
+    y_len: 0.12
     pusherRadious: 0.01 #  [meter]
     pusherFricCoef: 0.2
     pusherForceLim:  0.3
@@ -13,7 +16,7 @@ dynamics:
     Kz_min: 50.
 
 TO:
-    contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', or 'sliding_mi'
+    contactMode: 'sliding_cc'  # 'sticking', 'sliding_cc', or 'sliding_mi'
     # contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
     # contactMode: 'sliding_mi'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
     # contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'

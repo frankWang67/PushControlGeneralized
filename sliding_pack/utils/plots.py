@@ -77,7 +77,7 @@ def plot_nominal_traj(x_data, y_data,
         ax.set_ylim([0.0, 0.5])
     # ax settings
     ax.set_autoscale_on(False)
-    ax.grid();
+    ax.grid()
     ax.set_aspect('equal', 'box')
     ax.set_title(plot_title)
     ax.set_xlabel('x [m]')
