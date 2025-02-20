@@ -72,18 +72,23 @@ def compute_nomState_from_nomTraj(x_data, y_data, theta_0, dt):
     Dx1_nom = np.diff(x1_nom)
     # compute traj angle 
     ND = len(Dx0_nom)
-    x2_nom = np.empty(ND)
-    theta = 0.0
-    for i in range(ND):
-        # align +x axis with the forwarding direction
-        c, s = np.cos(theta), np.sin(theta)
-        R = np.array(((c, s), (-s, c)))
-        Dx_new = R.dot(np.array((Dx0_nom[i],Dx1_nom[i])))
-        # print(Dx_new)
-        theta += np.arctan2(Dx_new[1], Dx_new[0])
+    x2_nom = np.empty(ND-1)
+    theta = theta_0
+    for i in range(ND-1):
+        # # align +x axis with the forwarding direction
+        # c, s = np.cos(theta), np.sin(theta)
+        # R = np.array(((c, s), (-s, c)))
+        # Dx_new = R.dot(np.array((Dx0_nom[i],Dx1_nom[i])))
+        # if i == 0:
+        #     print(f"{Dx_new=}")
+        # theta += np.arctan2(Dx_new[1], Dx_new[0])
+        Dx_i = np.array((Dx0_nom[i],Dx1_nom[i]))
+        Dx_iplus1 = np.array((Dx0_nom[i+1],Dx1_nom[i+1]))
+        theta += np.arctan2(Dx_i[0]*Dx_iplus1[1] - Dx_i[1]*Dx_iplus1[0], Dx_i[0]*Dx_iplus1[0] + Dx_i[1]*Dx_iplus1[1])
         x2_nom[i] = theta
     x2_nom = np.append(x2_nom, x2_nom[-1])
-    x2_nom -= x2_nom[0] # initial angle at zero
+    x2_nom = np.append(x2_nom, x2_nom[-1])
+    # x2_nom -= x2_nom[0] # initial angle at zero
     Dx2_nom = np.diff(x2_nom)
     # specify angle of the pusher relative to slider
     x3_nom = np.zeros_like(x0_nom)
@@ -94,15 +99,25 @@ def compute_nomState_from_nomTraj(x_data, y_data, theta_0, dt):
     dx_nom = cs.horzcat(Dx0_nom, Dx1_nom, Dx2_nom, Dx3_nom).T/dt
     return x_nom, dx_nom
 
+def compute_nomState_from_nomTraj_hardware(x_data, y_data, theta_0, dt):
+    x_nom, dx_nom = compute_nomState_from_nomTraj(x_data, y_data, theta_0, dt)
+    x_nom = np.array(x_nom)
+    x_nom[2, :] = x_nom[2, :] % (2*np.pi)
+    x_nom[2, x_nom[2, :] > np.pi] -= 2*np.pi
+    x_nom[2, x_nom[2, :] < -np.pi] += 2*np.pi
+    x_nom = cs.DM(x_nom)
+    return x_nom, dx_nom
+
 if __name__ == "__main__":
     T = 30  # time of the simulation is seconds
     freq = 20  # number of increments per second
     N_MPC = 30  # time horizon for the MPC controller
     N = int(T*freq)  # total number of iterations
     dt = 1.0/freq  # sampling time
-    x_init_val = [0.0, 0.0, 0.0, 0.0]
+    x_init_val = [0.0, 0.0, np.pi/2, 0.0]
     x0_nom, x1_nom = generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2, N, N_MPC)
-    X_nom_val, _ = compute_nomState_from_nomTraj(x0_nom, x1_nom, x_init_val[2], dt)
+    x1_nom *= -1
+    X_nom_val, _ = compute_nomState_from_nomTraj_hardware(x0_nom, x1_nom, x_init_val[2], dt)
     thetas = np.array(X_nom_val[2,:]).reshape(-1)
 
     import matplotlib.pyplot as plt

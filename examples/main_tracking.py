@@ -24,7 +24,8 @@ import sliding_pack
 
 # Get config files
 #  -------------------------------------------------------------------
-tracking_config = sliding_pack.load_config('tracking_config.yaml')
+# tracking_config = sliding_pack.load_config('tracking_config.yaml')
+tracking_config = sliding_pack.load_config('hardware_square_tracking.yaml')
 # planning_config = sliding_pack.load_config('planning_switch_config.yaml')
 #  -------------------------------------------------------------------
 
@@ -38,20 +39,8 @@ freq = 20  # number of increments per second
 
 # N_MPC = 12 # time horizon for the MPC controller
 N_MPC = 30  # time horizon for the MPC controller
-# x_init_val = [-0.03, 0.03, 30*(np.pi/180.), 0]
-
-## x_traj from real robot exp
-# x_traj = np.load('./data/x_traj.npy')
-# u_traj = np.load('./data/u_traj.npy')
-
 
 x_init_val = [0.0, 0.0, 0.0, 0.0]
-# x_init_val = [0., 0., 0.2*np.pi, 0.]
-# x_init_val = [0., 0.0, 0.02*np.pi, 0]
-# x_init_val = [0.0, 0.0, 0.0, np.pi]
-# x_init_val = [0.4241445, 0.01386, -0.0365, 0.]
-
-# x_init_val = x_traj[:, 0].tolist()
 
 psic_offset = np.pi
 
@@ -94,7 +83,8 @@ X_goal = tracking_config['TO']['X_goal']
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
 
-x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2, N, N_MPC)
+x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
+x1_nom *= -1
 
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_ellipse(-np.pi/2, 3*np.pi/2, 0.2, 0.1, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.3, N, N_MPC)

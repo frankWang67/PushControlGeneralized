@@ -21,12 +21,11 @@ import sliding_pack
 
 class Sys_sq_slider_quasi_static_ellip_lim_surf():
 
-    def __init__(self, configDict, curve, contactMode='sticking', contactFace='-x', pusherAngleLim=0., limit_surf_gain=1.):
+    def __init__(self, configDict, curve, contactMode='sticking', pusherAngleLim=0., limit_surf_gain=1.):
         self.curve = curve
 
         # init parameters
         self.mode = contactMode
-        self.face = contactFace
         # self.sl = configDict['sideLenght']  # side dimension of the square slider [m]
         self.miu = configDict['pusherFricCoef']  # fric between pusher and slider
         self.f_lim = configDict['pusherForceLim']
@@ -35,10 +34,6 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         self.Kz_min = configDict['Kz_min']
         #  -------------------------------------------------------------------
         # vector of physical parameters
-        # self.beta = [self.xl, self.yl, self.r_pusher]
-        
-        # obstacles
-        self.Radius = 0.05
         
         self.Nbeta = 3
         self.beta = cs.MX.sym('beta', self.Nbeta)
@@ -48,18 +43,6 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         #  -------------------------------------------------------------------
         # self.psi_lim = 0.9*cs.arctan2(self.beta[0], self.beta[1])
         self.psi_lim = pusherAngleLim
-        """
-        if self.mode == 'sticking':
-            self.psi_lim = pusherAngleLim
-        else:
-            if self.face == '-x' or self.face == '+x':
-                self.psi_lim = configDict['xFacePsiLimit']
-            elif self.face == '-y' or self.face == '+y':
-                self.psi_lim = configDict['yFacePsiLimit']
-        """
-                # self.psi_lim = 0.405088
-                # self.psi_lim = 0.52
-
         self.limit_surf_gain = limit_surf_gain
 
         # system constant variables
@@ -101,11 +84,6 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         # system model
         # -------------------------------------------------------------------
         # Rotation matrix
-        # __Area = sliding_pack.integral.spline_area(__xl, __yl, self.curve.curve_func)(__xl, __yl)
-        # __int_Area = sliding_pack.integral.spline_cs(__xl, __yl, self.curve.curve_func)(__xl, __yl)
-        # __c = __int_Area/__Area # ellipsoid approximation ratio
-        # self.c = cs.Function('c', [__beta], [__c], ['b'], ['c'])
-        # __A = cs.SX.sym('__A', cs.Sparsity.diag(3))
         __A = cs.MX(self.curve.lim_surf_A)
         __A = self.limit_surf_gain * __A
         self.A = cs.Function('A', [__beta], [__A], ['b'], ['A'])
@@ -119,9 +97,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         __p = cs.MX.sym('p', 2) # pusher position
         __rc_prov = cs.mtimes(__R[0:2,0:2].T, __p - __x[0:2])  # (Real {Pusher Center} in {Slider})
         #  -------------------------------------------------------------------
-        # slider frame ({x} forward, {y} left)
         # slider position
-        # if self.face == '-x':
 
         t = self.curve.psic_to_t(__psi)
         contact_point = self.curve.curve_func(t)
@@ -132,23 +108,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         # `normal_vec` is the normal vector of the shape contour pointing inwards
         __rc = cs.MX(2,1); __rc[0] = __xc-__r_pusher*normal_vec[0]; __rc[1] = __yc-__r_pusher*normal_vec[1]  # ({Pusher Center} in {Slider})
         #  -------------------------------------------------------------------
-        # __psi_prov = -cs.atan2(__rc_prov[1], __xl/2)  # (Real {φ_c})
         __psi_prov = cs.atan2(__rc_prov[0], __rc_prov[1])  # (Real {φ_c})
-        # elif self.face == '+x':
-        #     __xc = __xl/2; __yc = __xl/2*cs.tan(__psi)  # ({Contact Point} in {Slider})
-        #     __rc = cs.MX(2,1); __rc[0] = __xc+__r_pusher; __rc[1] = __yc  # ({Pusher Center} in {Slider})
-        #     #  -------------------------------------------------------------------
-        #     __psi_prov = -cs.atan2(__rc_prov[1], -__xl/2)  # (Real {φ_c})
-        # elif self.face == '-y' or self.face == '+y':
-        #     __xc = -(__yl/2)/cs.tan(__psi) if np.abs(__psi - 0.5 * np.pi) > 1e-3 else 0.; __yc = -__yl/2  # ({Contact Point} in {Slider})
-        #     __rc = cs.MX(2,1); __rc[0] = __xc; __rc[1] = __yc-__r_pusher  # ({Pusher Center} in {Slider})
-        #     #  -------------------------------------------------------------------
-        #     __psi_prov = -cs.atan2(__yl/2, __rc_prov[0]) + cs.pi  # (Real {φ_c})
-        # else:
-        #     __xc = (__yl/2)/cs.tan(__psi) if np.abs(__psi + 0.5 * np.pi) > 1e-3 else 0.; __yc = __yl/2  # ({Contact Point} in {Slider})
-        #     __rc = cs.MX(2,1); __rc[0] = __xc; __rc[1] = __yc+__r_pusher  # ({Pusher Center} in {Slider})
-        #     #  -------------------------------------------------------------------
-        #     __psi_prov = -cs.atan2(-__yl/2, __rc_prov[0]) - cs.pi  # (Real {φ_c})
             
         # pusher position
         __p_pusher = cs.mtimes(__R[0:2,0:2], __rc)[0:2] + __x[0:2]  # ({Pusher Center} in {World})
@@ -164,14 +124,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         
         # dynamics
         __Jc = cs.MX(2,3)
-        # if self.face == '-x':
         __Jc[0,0] = 1; __Jc[1,1] = 1; __Jc[0,2] = -__yc; __Jc[1,2] = __xc;  # contact jacobian
-        # elif self.face == '+x':
-        #     __Jc[0,0] = -1; __Jc[1,1] = -1; __Jc[0,2] = __yc; __Jc[1,2] = -__xc;  # contact jacobian
-        # elif self.face == '-y':
-        #     __Jc[0,1] = -1; __Jc[1,0] = 1; __Jc[0,2] = __xc; __Jc[1,2] = __yc;  # contact jacobian
-        # else:
-        #     __Jc[0,1] = 1; __Jc[1,0] = -1; __Jc[0,2] = -__xc; __Jc[1,2] = -__yc;  # contact jacobian
         
         self.RAJc = cs.Function('RAJc', [__x,__beta], [cs.mtimes(cs.mtimes(__R, __A), __Jc.T)], ['x', 'b'], ['f'])
         __force = tangent_vec * __f_tan + normal_vec * __f_norm
@@ -373,96 +326,3 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             self.path_future.set_data(X_future[0, :, i], X_future[1, :, i])
         return []
     #  -------------------------------------------------------------------
-
-if __name__  == "__main__":
-    import yaml
-    import scipy.interpolate as spi
-    import matplotlib.pyplot as plt
-    import matplotlib.animation as animation
-
-    path = '/home/wshf/planar_pushing/PushControlGeneralized/sliding_pack/config/tracking_config.yaml'
-    with open(path, 'r') as f:
-        tracking_config = yaml.load(f, Loader=yaml.FullLoader)
-    control_points = tracking_config['dynamics']['control_points']
-    control_points = np.array(control_points)
-    tck, _ = spi.splprep([control_points[:, 0], control_points[:, 1]], s=0, per=True)
-
-    # Parameters for the B-spline
-    knots = tck[0]
-    coeffs = tck[1]
-    degree = tck[2]
-
-    # Define the B-spline
-    t = cs.MX.sym('t')
-    curve_func = sliding_pack.bspline.get_bspline_func(t, knots, coeffs, degree)
-    tangent_func, normal_func = sliding_pack.bspline.get_tangent_normal_func(t, knots, coeffs, degree)
-
-    # Create the system
-    dyn = Sys_sq_slider_quasi_static_ellip_lim_surf(
-        tracking_config['dynamics'],
-        curve_func,
-        tangent_func,
-        normal_func,
-        tracking_config['TO']['contactMode'],
-        pusherAngleLim=tracking_config['dynamics']['xFacePsiLimit'],
-        limit_surf_gain=1.
-    )
-    beta = [
-        tracking_config['dynamics']['x_len'],
-        tracking_config['dynamics']['y_len'],
-        tracking_config['dynamics']['pusherRadious']
-    ]
-    dt = 0.05
-
-    # x_test = np.array([0.0, 0.0, 0.0, np.pi])
-    # u_test = np.array([1.0, 0.0, 0.0, 0.0])
-    # f_grad_x = cs.jacobian(dyn.f(dyn.x, dyn.u, dyn.beta), dyn.x)
-    # f_grad_u = cs.jacobian(dyn.f(dyn.x, dyn.u, dyn.beta), dyn.u)
-    # f_grad_x_func = cs.Function('f_grad_x', [dyn.x, dyn.u, dyn.beta], [f_grad_x], ['x', 'u', 'b'], ['f_grad_x'])
-    # f_grad_u_func = cs.Function('f_grad_u', [dyn.x, dyn.u, dyn.beta], [f_grad_u], ['x', 'u', 'b'], ['f_grad_u'])
-
-    # f_grad_x_test = f_grad_x_func(x_test, u_test, beta)
-    # f_grad_u_test = f_grad_u_func(x_test, u_test, beta)
-
-    # print(f_grad_x_test)
-    # print(f_grad_u_test)
-
-    data = np.load("/home/wshf/planar_pushing/PushControlGeneralized/data/tracking_sim_data_20250102-154450.npy", allow_pickle=True)
-    # data = np.load("/home/wshf/planar_pushing/iros23_legacy/PushControl/data/tracking_simulation_data.npy", allow_pickle=True)
-    x0 = data['X_plot'][:, 0]
-    u_data = data['U_plot']
-
-    #  ---------------------------------------------------------------
-    N = data['X_plot'].shape[1]
-    X_sim = np.zeros((4, N))
-    X_sim[:, 0] = x0
-    for i in range(1, N):
-        u0 = u_data[:, i - 1]
-        x0 = x0 + dyn.f(x0, u0, beta)*dt
-        X_sim[:, i] = np.array(x0).flatten()
-
-    #  ---------------------------------------------------------------
-    fig, ax = plt.subplots()
-    ax.grid()
-    ax.set_aspect('equal', 'box')
-    ax.set_xlabel('x [m]')
-    ax.set_ylabel('y [m]')
-    ax.set_xlim(-0.3, 0.3)
-    ax.set_ylim(-0.1, 0.5)
-    # set window size
-    fig.set_size_inches(8, 6, forward=True)
-    # get slider and pusher patches
-    dyn.set_patches(ax, data['X_plot'], beta, curve_func)
-    # call the animation
-    ani = animation.FuncAnimation(
-            fig,
-            dyn.animate,
-            fargs=(ax, X_sim, beta),
-            frames=N,
-            interval=dt*1000,  # microseconds
-            blit=True,
-            repeat=False,
-    )
-    # to save animation, uncomment the line below:
-    ani.save('./video/sim_cross_2.mp4', fps=25, extra_args=['-vcodec', 'mpeg4'])
-#  -------------------------------------------------------------------

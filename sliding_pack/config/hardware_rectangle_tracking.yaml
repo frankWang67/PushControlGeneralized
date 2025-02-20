@@ -1,0 +1,40 @@
+#
+# Configuration file for tracking using sliding
+# 
+
+dynamics:
+    slider_name: "rectangle"
+    control_points: [
+        [0.058, 0.000], [0.058, 0.011], [0.058, 0.022], [0.058, 0.033], [0.039, 0.033], [0.019, 0.033], [0.000, 0.033], [-0.019, 0.033], [-0.039, 0.033], [-0.058, 0.033], [-0.058, 0.022], [-0.058, 0.011], [-0.058, 0.000], [-0.058, -0.011], [-0.058, -0.022], [-0.058, -0.033], [-0.039, -0.033], [-0.019, -0.033], [0.000, -0.033], [0.019, -0.033], [0.039, -0.033], [0.058, -0.033], [0.058, -0.022], [0.058, -0.011], [0.058, 0.000]
+    ] # [meter]
+    x_len: 0.122
+    y_len: 0.070
+    pusherRadious: 0.0075 #  [meter]
+    pusherFricCoef: 0.1
+    pusherForceLim:  0.3
+    pusherAngleVelLim: 3.0
+    Kz_max: 50
+    Kz_min: 25
+    xFacePsiLimit: 0.9
+    # yFacePsiLimit: 0.405088
+    yFacePsiLimit: 0.52
+
+TO:
+    contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
+    # contactMode: 'sliding_mi'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
+    solverName: 'ipopt'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
+    # solverName: 'gurobi'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
+    # W_x: [10.0, 10.0, 0.1, 0.]  # diagonal state weights
+    W_x: [10.0, 10.0, 0.01, 0.]  # diagonal state weights
+    W_u: [0.01, 0.01, 0.0, 0.0]  # diagonal control weights
+    # W_u: [0.0, 0.0, 0.0, 0.]  # diagonal control weights
+    K_goal: 10
+    X_goal: null
+    # X_goal: [0.3, 0.4, 0., 0.]
+    linDynFlag: False
+    # linDynFlag: True
+    codeGenFlag: False
+    noPrintingFlag: True
+    phases: null
+    numObs: 0
+    # phases: [1, 5, 5, 5, 3]
