@@ -25,7 +25,7 @@ import sliding_pack
 # Get config files
 #  -------------------------------------------------------------------
 # tracking_config = sliding_pack.load_config('tracking_config.yaml')
-tracking_config = sliding_pack.load_config('hardware_square_tracking.yaml')
+tracking_config = sliding_pack.load_config('hardware_rectangle_tracking.yaml')
 # planning_config = sliding_pack.load_config('planning_switch_config.yaml')
 #  -------------------------------------------------------------------
 
@@ -40,9 +40,9 @@ freq = 20  # number of increments per second
 # N_MPC = 12 # time horizon for the MPC controller
 N_MPC = 30  # time horizon for the MPC controller
 
-x_init_val = [0.0, 0.0, 0.0, 0.0]
+x_init_val = [0.0, 0.0, np.pi/2, 0.0]
 
-psic_offset = np.pi
+psic_offset = np.pi/2
 
 show_anim = True
 save_to_file = False
@@ -189,6 +189,8 @@ x0 = x_init_val
 # pdb.set_trace()
 # exit(0)
 
+u_opt_last = None
+
 for idx in range(Nidx-1):
     # if idx >= 100:
     #     break
@@ -205,18 +207,22 @@ for idx in range(Nidx-1):
     # U_warmStart = cs.GenDM_zeros(dyn.Nu, N_MPC-1)
     # U_warmStart[0, :] = 1.0
     U_warmStart = None
+    if u_opt_last is not None:
+        U_warmStart = cs.horzcat(u_opt_last[:, 1:], cs.GenDM_zeros(dyn.Nu, 1))
     resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(
             idx, x0, beta, [0., 0., 0., 0.],
             U_warmStart=U_warmStart, S_goal_val=S_goal_val,
-            obsCentre=obsCentre, obsRadius=obsRadius)
+            obsCentre=obsCentre, obsRadius=obsRadius, psic_offset=psic_offset)
     print(f"{f_opt=}")
     # import pdb; pdb.set_trace()
     # ---- update initial state (simulation) ----
     u0 = u_opt[:, 0].elements()
+    u_opt_last = u_opt
     # x0 = x_opt[:,1].elements()
     x0[-1] += psic_offset
     x0 = (x0 + dyn.f(x0, u0, beta)*dt).elements()
-    x0[-1] -= psic_offset
+    psic_offset = x0[-1]
+    x0[-1] = 0.0
 
     ## add noise to x0
     # x0 = np.array(x0) + np.random.uniform(low=[])

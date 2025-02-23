@@ -27,8 +27,8 @@ TO:
     # W_x: [10.0, 10.0, 0.1, 0.]  # diagonal state weights
     W_x: [10.0, 10.0, 0.01, 0.]  # diagonal state weights
     # W_x: [10.0, 10.0, 0.0, 0.0]
-    W_u: [0.01, 0.01, 0.0, 0.0]  # diagonal control weights
-    # W_u: [0.0, 0.0, 0.0, 0.]  # diagonal control weights
+    # W_u: [0.01, 0.01, 0.0, 0.0]  # diagonal control weights
+    W_u: [0.01, 0.01, 0.01, 0.01]  # diagonal control weights
     K_goal: 10
     X_goal: null
     # X_goal: [0.3, 0.4, 0., 0.]

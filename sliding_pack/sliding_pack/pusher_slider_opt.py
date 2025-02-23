@@ -36,10 +36,7 @@ class buildOptObj():
             self.X_nom_val = cs.DM.zeros(self.dyn.Nx, self.TH)
         else:
             self.X_nom_val = X_nom_val
-        if U_nom_val is None:
-            self.U_nom_val = cs.DM.zeros(self.dyn.Nu, self.TH-1)
-        else:
-            self.U_nom_val = U_nom_val
+        self.U_nom_val = U_nom_val
         self.useGoalFlag = useGoalFlag
         self.solverName = configDict['solverName']
         self.linDyn = configDict['linDynFlag']
@@ -89,7 +86,7 @@ class buildOptObj():
             # define vars for deviation from nominal path
             self.X_bar = self.X - self.X_nom
             # normalize angles
-            # self.X_bar[2, :] = cs.fmod(cs.fabs(self.X_bar[2, :]), 2*cs.pi) - cs.pi
+            self.X_bar[2, :] = self.X_bar[2, :] - 2*cs.pi*cs.floor((self.X_bar[2, :]+cs.pi)/(2*cs.pi))
         # initial state
         self.x0 = cs.MX.sym('x0', self.dyn.Nx)
         if self.phases is None:
@@ -131,7 +128,7 @@ class buildOptObj():
             self.f_error = cs.Function(
                     'f_error',
                     [__x_nom, __u_nom, __x_bar, __x_bar_next, __u_bar, self.dyn.beta],
-                    [__x_bar_next-__x_bar-dt*(cs.mtimes(__A_func(__x_nom, __u_nom, self.dyn.beta), __x_bar) + cs.mtimes(__B_func(__x_nom,__u_nom, self.dyn.beta),__u_bar))])
+                    [__x_bar_next-__x_bar-dt*(cs.mtimes(__A_func(__x_nom, __u_nom, self.dyn.beta), __x_bar) + cs.mtimes(__B_func(__x_nom,__u_nom, self.dyn.beta),__u_bar) + self.dyn.f(__x_nom, __u_nom, self.dyn.beta))])
         else:
             __x_next = cs.MX.sym('__x_next', self.dyn.Nx)
             self.f_error = cs.Function(
@@ -316,20 +313,23 @@ class buildOptObj():
 
     def solveProblem(self, idx, x0, beta, d_hat=None,
                      X_warmStart=None, U_warmStart=None,
-                     obsCentre=None, obsRadius=None, S_goal_val=None, X_goal_val=None):
+                     obsCentre=None, obsRadius=None, S_goal_val=None, X_goal_val=None, psic_offset=None):
         if self.numObs > 0:
             if self.numObs != len(obsCentre) or self.numObs != len(obsRadius):
                 print("Number of obstacles does not match the config file!", file=sys.stderr)
                 sys.exit()
         if d_hat is None:
             d_hat = np.zeros(self.dyn.Nx).tolist()
+        if psic_offset is not None:
+            self.psic_offset_val = psic_offset
         # ---- setting parameters ---- 
         p_ = []  # set to empty before reinitialize
         p_ += beta
         p_ += x0
         p_ += [0.0] * (self.dyn.Nx - 1) + [self.psic_offset_val]
         p_ += self.X_nom_val[:, idx:(idx+self.TH)].elements()
-        p_ += d_hat
+        if not self.linDyn:
+            p_ += d_hat
         if self.useGoalFlag:
             if X_goal_val is None:
                 p_ += x0
@@ -342,7 +342,14 @@ class buildOptObj():
             else:
                 p_ += S_goal_val
         if self.linDyn:
-            p_ += self.U_nom_val[:, idx:(idx+self.TH-1)].elements()
+            if self.U_nom_val is not None:
+                p_ += self.U_nom_val[:, idx:(idx+self.TH-1)].elements()
+            else:
+                if U_warmStart is None:
+                    p_ += [0.0]*self.dyn.Nu*(self.TH-1)
+                else:
+                    p_ += U_warmStart.elements()
+            
         if self.numObs > 0:
             for i_obs in range(self.numObs):
                 p_.append(obsCentre[i_obs][0])
@@ -405,9 +412,9 @@ class buildOptObj():
         opt_sol[(self.TH*self.Nxu-self.dyn.Nu):] = [0.]
         # self.args.x0 = opt_sol.elements()
         self.args.x0 = [opt_sol]
-        # ---- add nominal trajectory ----
-        if self.linDyn:
-            x_opt += self.X_nom_val[:, idx:(idx+self.TH)]
-            u_opt += self.U_nom_val[:, idx:(idx+self.TH-1)]
+        # # ---- add nominal trajectory ----
+        # if self.linDyn:
+        #     x_opt += self.X_nom_val[:, idx:(idx+self.TH)]
+        #     u_opt += self.U_nom_val[:, idx:(idx+self.TH-1)]
 
         return resultFlag, x_opt, u_opt, other_opt, f_opt, t_opt
