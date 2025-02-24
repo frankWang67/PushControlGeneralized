@@ -25,7 +25,7 @@ import sliding_pack
 # Get config files
 #  -------------------------------------------------------------------
 # tracking_config = sliding_pack.load_config('tracking_config.yaml')
-tracking_config = sliding_pack.load_config('hardware_rectangle_tracking.yaml')
+tracking_config = sliding_pack.load_config('hardware_circle_tracking.yaml')
 # planning_config = sliding_pack.load_config('planning_switch_config.yaml')
 #  -------------------------------------------------------------------
 
@@ -152,6 +152,7 @@ X_plot = np.empty([dyn.Nx, Nidx])
 U_plot = np.empty([dyn.Nu, Nidx-1])
 del_plot = np.empty([dyn.Nz, Nidx-1])
 X_plot[:, 0] = x_init_val
+X_plot[-1, 0] += psic_offset
 X_future = np.empty([dyn.Nx, N_MPC, Nidx])
 U_future = np.empty([dyn.Nu, N_MPC-1, Nidx])
 comp_time = np.empty((Nidx-1, 1))
@@ -203,7 +204,7 @@ for idx in range(Nidx-1):
     #     x0[2] += 0.*(np.pi/180.)
     # ---- solve problem ----
     # x0 = x_traj[:, idx+1].tolist()
-    X_plot[:, idx+1] = x0
+    
     # U_warmStart = cs.GenDM_zeros(dyn.Nu, N_MPC-1)
     # U_warmStart[0, :] = 1.0
     U_warmStart = None
@@ -221,8 +222,10 @@ for idx in range(Nidx-1):
     # x0 = x_opt[:,1].elements()
     x0[-1] += psic_offset
     x0 = (x0 + dyn.f(x0, u0, beta)*dt).elements()
-    psic_offset = x0[-1]
-    x0[-1] = 0.0
+    X_plot[:, idx+1] = x0
+    # psic_offset = x0[-1]
+    # x0[-1] = 0.0
+    x0[-1] -= psic_offset
 
     ## add noise to x0
     # x0 = np.array(x0) + np.random.uniform(low=[])
@@ -234,7 +237,7 @@ for idx in range(Nidx-1):
     # X_plot[:, idx+1] = x0
     U_plot[:, idx] = u0
     x_opt = np.array(x_opt)
-    x_opt[:, -1] += psic_offset
+    x_opt[-1, :] += psic_offset
     X_future[:, :, idx] = np.array(x_opt)
     U_future[:, :, idx] = np.array(u_opt)
     if dyn.Nz > 0:
@@ -247,8 +250,6 @@ for idx in range(Nidx-1):
         print(S_goal_val)
         # sys.exit()
 #  -------------------------------------------------------------------
-X_nom_val[-1, :] += psic_offset
-X_plot[-1, :] += psic_offset
 # show sparsity pattern
 # sliding_pack.plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xu_opt)
 p_new = cs.Function('p_new', [dyn.x], [dyn.p(dyn.x, beta)])
