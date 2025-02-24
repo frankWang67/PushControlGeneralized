@@ -35,7 +35,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         #  -------------------------------------------------------------------
         # vector of physical parameters
         
-        self.Nbeta = 3
+        self.Nbeta = 1
         self.beta = cs.MX.sym('beta', self.Nbeta)
         # beta[0] - xl
         # beta[1] - yl
@@ -76,10 +76,8 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         __psi_dot = cs.MX.sym('__psi_dot')
         __u = cs.veccat(__f_norm, __f_tan, __psi_dot)
         # beta - dynamic parameters
-        __xl = cs.MX.sym('__xl')  # slider x lenght
-        __yl = cs.MX.sym('__yl')  # slider y lenght
         __r_pusher = cs.MX.sym('__r_pusher')  # radious of the cilindrical pusher
-        __beta = cs.veccat(__xl, __yl, __r_pusher)
+        __beta = __r_pusher
 
         # system model
         # -------------------------------------------------------------------

@@ -25,7 +25,7 @@ import sliding_pack
 # Get config files
 #  -------------------------------------------------------------------
 # tracking_config = sliding_pack.load_config('tracking_config.yaml')
-tracking_config = sliding_pack.load_config('hardware_circle_tracking.yaml')
+tracking_config = sliding_pack.load_config('hardware_rectangle_tracking.yaml')
 # planning_config = sliding_pack.load_config('planning_switch_config.yaml')
 #  -------------------------------------------------------------------
 
@@ -118,8 +118,6 @@ X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, x
 #     planning_config['dynamics']['pusherRadious']
 # ]
 beta = [
-    tracking_config['dynamics']['x_len'],
-    tracking_config['dynamics']['y_len'],
     tracking_config['dynamics']['pusherRadious']
 ]
 # print("`solveProblem` start")
