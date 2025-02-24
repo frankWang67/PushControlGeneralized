@@ -37,9 +37,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         
         self.Nbeta = 1
         self.beta = cs.MX.sym('beta', self.Nbeta)
-        # beta[0] - xl
-        # beta[1] - yl
-        # beta[2] - r_pusher
+        # beta - r_pusher
         #  -------------------------------------------------------------------
         # self.psi_lim = 0.9*cs.arctan2(self.beta[0], self.beta[1])
         self.psi_lim = pusherAngleLim
@@ -293,7 +291,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
     def set_patches(self, ax, x_data, beta, curve_func):
         t_vals = np.linspace(0, 1, 100)
         contour_pts = np.array([curve_func(t) for t in t_vals]).reshape(-1, 2)
-        R_pusher = beta[2]
+        R_pusher = beta[0]
         x0 = x_data[:, 0]
         contour_pts[:, 0] += x0[0]
         contour_pts[:, 1] += x0[1]
