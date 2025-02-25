@@ -13,11 +13,10 @@ class bspline_curve:
         ----------
         `control_points`: `np.ndarray` of shape `(n, 2)`
         """
-        tck, _ = spi.splprep([control_points[:, 0], control_points[:, 1]], s=0, per=True)
-        self.tck = tck
-        self.knots = tck[0]
-        self.coeffs = tck[1]
-        self.degree = tck[2]
+        self.tck, _ = spi.splprep([control_points[:, 0], control_points[:, 1]], s=0, per=True)
+        self.knots = self.tck[0]
+        self.coeffs = self.tck[1]
+        self.degree = self.tck[2]
 
         t = cs.MX.sym('t')
         coeffs_matrix = cs.horzcat(*self.coeffs).T
@@ -30,6 +29,17 @@ class bspline_curve:
         self.normal_func = cs.Function('normal_func', [t], [normal])
 
         self.lim_surf_A = np.diag([1.0, 1.0, self.get_curvature()])
+
+        self.t_samples = np.linspace(0, 1, 100)
+        self.pt_samples = np.array(spi.splev(self.t_samples, self.tck))
+        self.psic_samples = np.arctan2(self.pt_samples[1, :], self.pt_samples[0, :])
+        permute_idx = np.argsort(self.psic_samples)
+        self.t_samples = self.t_samples[permute_idx]
+        self.psic_samples = self.psic_samples[permute_idx]
+        tck_psic2t = spi.splrep(self.psic_samples, self.t_samples, s=0.1, per=True)
+        psic = cs.MX.sym('psic')
+        psic2t = cs.bspline(psic, cs.horzcat(*tck_psic2t[1]).T, [tck_psic2t[0].tolist()], [tck_psic2t[2]], 1, {})
+        self.psic_to_t_func = cs.Function('psic_to_t_func', [psic], [psic2t])
 
     def psic_to_t(self, psic):
         """
@@ -45,9 +55,10 @@ class bspline_curve:
         `float`
             The parameter of the B-spline curve.
         """
-        psic = cs.fmod(psic, 2 * cs.pi)
-        psic = cs.if_else(cs.le(psic, 0), psic + 2 * cs.pi, psic)
-        return psic / (2 * cs.pi)
+        # psic = cs.fmod(psic, 2 * cs.pi)
+        # psic = cs.if_else(cs.le(psic, 0), psic + 2 * cs.pi, psic)
+        # return psic / (2 * cs.pi)
+        return self.psic_to_t_func(psic)
     
     def integrate(self, f, N=1000, M=1000):
         """
@@ -110,34 +121,25 @@ class bspline_curve:
         return 1.0 / (c ** 2)
 
 if __name__ == "__main__":
-    # control_points = np.array([
-    #     [0.061, 0.000], [0.061, 0.012], [0.061, 0.023], [0.061, 0.035], [0.041, 0.035], [0.020, 0.035], [0.000, 0.035], [-0.020, 0.035], [-0.041, 0.035], [-0.061, 0.035], [-0.061, 0.023], [-0.061, 0.012], [-0.061, 0.000], [-0.061, -0.012], [-0.061, -0.023], [-0.061, -0.035], [-0.041, -0.035], [-0.020, -0.035], [0.000, -0.035], [0.020, -0.035], [0.041, -0.035], [0.061, -0.035], [0.061, -0.023], [0.061, -0.012]
-    # ])
-    # control_points = np.vstack([control_points, control_points[0]])
     control_points = np.array([
-        [0.070, 0.000], [0.061, 0.035], [0.035, 0.061], [0.000, 0.070], [-0.035, 0.061], [-0.061, 0.035], [-0.070, 0.000], [-0.061, -0.035], [-0.035, -0.061], [-0.000, -0.070], [0.035, -0.061], [0.061, -0.035], [0.070, -0.000]
+        [0.061, 0.000], [0.061, 0.012], [0.061, 0.023], [0.061, 0.035], [0.041, 0.035], [0.020, 0.035], [0.000, 0.035], [-0.020, 0.035], [-0.041, 0.035], [-0.061, 0.035], [-0.061, 0.023], [-0.061, 0.012], [-0.061, 0.000], [-0.061, -0.012], [-0.061, -0.023], [-0.061, -0.035], [-0.041, -0.035], [-0.020, -0.035], [0.000, -0.035], [0.020, -0.035], [0.041, -0.035], [0.061, -0.035], [0.061, -0.023], [0.061, -0.012]
     ])
+    control_points = np.vstack([control_points, control_points[0]])
+    # control_points = np.array([
+    #     [0.070, 0.000], [0.061, 0.035], [0.035, 0.061], [0.000, 0.070], [-0.035, 0.061], [-0.061, 0.035], [-0.070, 0.000], [-0.061, -0.035], [-0.035, -0.061], [-0.000, -0.070], [0.035, -0.061], [0.061, -0.035], [0.070, -0.000]
+    # ])
     curve = bspline_curve(control_points)
 
     t_vals = np.linspace(0, 1, 1000)
     pt_vals = np.array([curve.curve_func(t) for t in t_vals])
 
-    psic = np.pi*2
+    psic = np.pi/4
     t = curve.psic_to_t(psic)
+    print(f"{t=}")
     pt = np.array(curve.curve_func(t)).reshape(-1)
     print(f"psic: {np.arctan2(pt[1], pt[0])}, error: {np.arctan2(pt[1], pt[0]) - psic}")
     tangent = np.array(curve.tangent_func(t)).reshape(-1)
     normal = np.array(curve.normal_func(t)).reshape(-1)
-    
-    # t_sym = cs.MX.sym('t')
-    # pt_sym = curve.curve_func(t_sym)
-    # tangent_sym = curve.tangent_func(t_sym)
-    # normal_sym = curve.normal_func(t_sym)
-    # print(f"pt_sym: {pt_sym}")
-    # print(f"tangent_sym: {tangent_sym}")
-    # print(f"normal_sym: {normal_sym}")
-
-    print(f"Curvature squared: {curve.get_curvature()}")
 
     plt.plot(pt_vals[:, 0], pt_vals[:, 1], 'b-')
     plt.plot(control_points[:, 0], control_points[:, 1], 'ro')
