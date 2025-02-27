@@ -25,7 +25,7 @@ import sliding_pack
 # Get config files
 #  -------------------------------------------------------------------
 # tracking_config = sliding_pack.load_config('tracking_config.yaml')
-tracking_config = sliding_pack.load_config('hardware_rectangle_tracking.yaml')
+tracking_config = sliding_pack.load_config('hardware_frenchs_tracking.yaml')
 # planning_config = sliding_pack.load_config('planning_switch_config.yaml')
 #  -------------------------------------------------------------------
 
