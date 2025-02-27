@@ -120,7 +120,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         
         # dynamics
         __Jc = cs.MX(2,3)
-        __Jc[0,0] = 1; __Jc[1,1] = 1; __Jc[0,2] = -__yc; __Jc[1,2] = __xc;  # contact jacobian
+        __Jc[0,0] = 1; __Jc[1,1] = 1; __Jc[1,0] = 0; __Jc[0,1] = 0; __Jc[0,2] = -__yc; __Jc[1,2] = __xc;  # contact jacobian
         
         self.RAJc = cs.Function('RAJc', [__x,__beta], [cs.mtimes(cs.mtimes(__R, __A), __Jc.T)], ['x', 'b'], ['f'])
         __force = tangent_vec * __f_tan + normal_vec * __f_norm
