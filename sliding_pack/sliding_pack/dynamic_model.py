@@ -293,8 +293,6 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         contour_pts = np.array([curve_func(t) for t in t_vals]).reshape(-1, 2)
         R_pusher = beta[0]
         x0 = x_data[:, 0]
-        contour_pts[:, 0] += x0[0]
-        contour_pts[:, 1] += x0[1]
         contour_path = Path(contour_pts)
         self.slider = patches.PathPatch(contour_path, lw=2)
         self.pusher = patches.Circle(

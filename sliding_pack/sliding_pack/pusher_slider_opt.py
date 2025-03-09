@@ -390,6 +390,7 @@ class buildOptObj():
         # sys.exit()
         # ---- save computation time ---- 
         t_opt = time.time() - start_time
+        print(f"Optimization problem solved time: {t_opt:.2f} s")
         # ---- decode solution ----
         resultFlag = self.solver.stats()['success']
         opt_sol = sol['x']
