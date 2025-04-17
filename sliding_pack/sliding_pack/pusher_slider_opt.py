@@ -26,9 +26,10 @@ class buildOptObj():
         self.dyn = dyn_class
         self.TH = timeHorizon
         self.solver_name = configDict['solverName']
-        self.W_x = cs.diag(cs.MX(configDict['W_x']))
-        self.W_u = cs.diag(cs.MX(configDict['W_u']))[:self.dyn.Nu,
-                                                     :self.dyn.Nu]
+        self.W_x  = cs.diag(cs.MX(configDict['W_x']))
+        self.W_dx = cs.diag(cs.MX(configDict['W_dx']))
+        self.W_u  = cs.diag(cs.MX(configDict['W_u']))[:self.dyn.Nu,
+                                                      :self.dyn.Nu]
         self.K_goal = configDict['K_goal']
         self.numObs = configDict['numObs']
         self.psic_offset_val = psic_offset_val
@@ -44,10 +45,10 @@ class buildOptObj():
         self.no_printing = configDict['noPrintingFlag']
         self.phases = configDict['phases']
 
-        # self.psic_offset = cs.MX.sym('psic_offset')
-        # self.x_bias = cs.MX.zeros(self.dyn.Nx)
-        # self.x_bias[-1] = self.psic_offset
         self.x_bias = cs.MX.sym('x_bias', self.dyn.Nx)
+        self.x_last = cs.MX.sym('x_last', self.dyn.Nx)
+        self.u_last = cs.MX.sym('u_last', self.dyn.Nu)
+        # self.U_last = cs.repmat(self.u_last, 1, self.TH-1)
 
         # opt var dimensionality
         self.Nxu = self.dyn.Nx + self.dyn.Nu
@@ -87,6 +88,9 @@ class buildOptObj():
             self.X_bar = self.X - self.X_nom
             # normalize angles
             self.X_bar[2, :] = self.X_bar[2, :] - 2*cs.pi*cs.floor((self.X_bar[2, :]+cs.pi)/(2*cs.pi))
+        self.X_last = cs.horzcat(self.x_last, self.X[:, 0:-1])
+        self.U_last = cs.horzcat(self.u_last, self.U[:, 0:-1])
+        self.dX = self.X - self.X_last
         # initial state
         self.x0 = cs.MX.sym('x0', self.dyn.Nx)
         if self.phases is None:
@@ -143,10 +147,11 @@ class buildOptObj():
         #  -------------------------------------------------------------------)
 
         #  -------------------------------------------------------------------
+        __dx = cs.MX.sym('dx', self.dyn.Nx)
         self.cost_f = cs.Function(
                 'cost_f',
-                [__x_bar, self.dyn.u],
-                [cs.dot(__x_bar, cs.mtimes(self.W_x, __x_bar))
+                [__x_bar, __dx, self.dyn.u],
+                [cs.dot(__x_bar, cs.mtimes(self.W_x, __x_bar)) + cs.dot(__dx, cs.mtimes(self.W_dx, __dx))
                     + cs.dot(self.dyn.u, cs.mtimes(self.W_u, self.dyn.u))])
         self.cost_F = self.cost_f.map(self.TH-1)
         # ------------------------------------------
@@ -231,10 +236,10 @@ class buildOptObj():
         if self.useGoalFlag:
             self.S_goal = cs.MX.sym('s', self.TH-1)
             self.X_goal_var = cs.MX.sym('x_goal_var', self.dyn.Nx)
-            self.opt.f = self.cost_f(cs.mtimes(self.X[:, :-1], self.S_goal) - self.X_goal_var, self.U[:, -1])
+            self.opt.f = self.cost_f(cs.mtimes(self.X[:, :-1], self.S_goal) - self.X_goal_var, self.dX[:, :-1], self.U[:, -1])
         else:
-            self.opt.f = cs.sum2(self.cost_F(self.X_bar[:, :-1], self.U))
-            self.opt.f += self.K_goal*self.cost_f(self.X_bar[:, -1], self.U[:, -1])
+            self.opt.f = cs.sum2(self.cost_F(self.X_bar[:, :-1], self.dX[:, :-1], self.U - self.U_last))
+            self.opt.f += self.K_goal*self.cost_f(self.X_bar[:, -1], self.dX[:, -1], self.U[:, -1] - self.u_last)
         for i in range(self.dyn.Nz):
             # (what trick is this?)
             self.opt.f += cs.sum1(self.Kz*(self.Z[i].T**2))
@@ -246,6 +251,8 @@ class buildOptObj():
         self.opt.p += [self.x0]
         self.opt.p += [self.x_bias]
         self.opt.p += [cs.vec(self.X_nom)]
+        self.opt.p += [self.x_last]
+        self.opt.p += [self.u_last]
         if not self.linDyn:
             self.opt.p += [self.d_hat]
         if self.useGoalFlag:
@@ -311,7 +318,7 @@ class buildOptObj():
             self.solver = cs.qpsol('solver', self.solver_name, prob, opts_dict)
         #  -------------------------------------------------------------------
 
-    def solveProblem(self, idx, x0, beta, d_hat=None,
+    def solveProblem(self, idx, x0, beta, x_last, u_last, d_hat=None,
                      X_warmStart=None, U_warmStart=None,
                      obsCentre=None, obsRadius=None, S_goal_val=None, X_goal_val=None, psic_offset=None):
         if self.numObs > 0:
@@ -328,6 +335,11 @@ class buildOptObj():
         p_ += x0
         p_ += [0.0] * (self.dyn.Nx - 1) + [self.psic_offset_val]
         p_ += self.X_nom_val[:, idx:(idx+self.TH)].elements()
+        p_ += x_last
+        if u_last is not None:
+            p_ += u_last[:, 0].elements()
+        else:
+            p_ += [0.0] * self.dyn.Nu
         if not self.linDyn:
             p_ += d_hat
         if self.useGoalFlag:
