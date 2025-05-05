@@ -81,9 +81,9 @@ X_goal = tracking_config['TO']['X_goal']
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.35, 0.0, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_sine(0.3, 0.0, 0.05, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, N_MPC)
-x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
 
-# x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
+x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
 # x1_nom *= -1
 
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_ellipse(-np.pi/2, 3*np.pi/2, 0.2, 0.1, N, N_MPC)
@@ -95,8 +95,8 @@ x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 
-# X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, x_init_val[2], dt)
-X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, np.arctan2(0.3, 0.5) + x_init_val[2], dt)
+X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, x_init_val[2], dt)
+# X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, np.arctan2(0.3, 0.5) + x_init_val[2], dt)
 
 #  ------------------------------------------------------------------
 # Compute nominal actions for sticking contact
@@ -184,6 +184,7 @@ elif optObj.numObs==1:
 # Set arguments and solve
 #  -------------------------------------------------------------------
 x0 = x_init_val
+u0 = [0.0] * dyn.Nu
 
 # import pdb
 # pdb.set_trace()
@@ -210,7 +211,7 @@ for idx in range(Nidx-1):
     if u_opt_last is not None:
         U_warmStart = cs.horzcat(u_opt_last[:, 1:], cs.GenDM_zeros(dyn.Nu, 1))
     resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(
-            idx, x0, beta, [0., 0., 0., 0.],
+            idx, x0, beta, x_last=x0, u_last=cs.DM(u0), d_hat=[0., 0., 0., 0.],
             U_warmStart=U_warmStart, S_goal_val=S_goal_val,
             obsCentre=obsCentre, obsRadius=obsRadius, psic_offset=psic_offset)
     print(f"{f_opt=}")
